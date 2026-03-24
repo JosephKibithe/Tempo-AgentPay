@@ -1,0 +1,176 @@
+import type {
+  Policy,
+  ProviderHealth,
+  SummaryStats,
+  Task,
+  TaskCreateResponse,
+  TaskReport,
+} from '@/lib/types';
+
+export const mockTaskReport: TaskReport = {
+  task: {
+    id: 'task-20260324-001',
+    prompt: 'What is the future of autonomous agents?',
+    budgetMax: 5,
+    budgetRemaining: 4.98,
+    providerPolicy: 'primary-first',
+    maxRetries: 2,
+    status: 'success',
+    createdAt: '2026-03-24T10:12:00.000Z',
+    updatedAt: '2026-03-24T10:12:12.000Z',
+    metadata: {
+      tenant: 'demo',
+      requestedBy: 'operator',
+    },
+  },
+  finalStatus: 'success',
+  totalSpent: 0.02,
+  remainingBudget: 4.98,
+  averageLatencyMs: 3355,
+  fallbackCount: 1,
+  output: 'Autonomous agents will likely become more specialized, cost-aware, and policy-governed as infrastructure matures.',
+  attempts: [
+    {
+      id: 'task-20260324-001-attempt-1',
+      taskId: 'task-20260324-001',
+      provider: 'ProviderA',
+      endpoint: '/fal-ai/fast-llm/summary',
+      latencyMs: 340,
+      cost: 0,
+      status: 'failed',
+      error: 'Simulated 500 Internal Server Error',
+      startedAt: '2026-03-24T10:12:00.000Z',
+      completedAt: '2026-03-24T10:12:00.340Z',
+      isFallback: false,
+      fallbackFrom: null,
+    },
+    {
+      id: 'task-20260324-001-attempt-2',
+      taskId: 'task-20260324-001',
+      provider: 'ProviderA',
+      endpoint: '/fal-ai/fast-llm/summary',
+      latencyMs: 341,
+      cost: 0,
+      status: 'failed',
+      error: 'Simulated 500 Internal Server Error',
+      startedAt: '2026-03-24T10:12:00.400Z',
+      completedAt: '2026-03-24T10:12:00.741Z',
+      isFallback: false,
+      fallbackFrom: null,
+    },
+    {
+      id: 'task-20260324-001-attempt-3',
+      taskId: 'task-20260324-001',
+      provider: 'ProviderB',
+      endpoint: '/mistral/chat',
+      latencyMs: 9386,
+      cost: 0.02,
+      status: 'success',
+      error: null,
+      startedAt: '2026-03-24T10:12:02.000Z',
+      completedAt: '2026-03-24T10:12:11.386Z',
+      isFallback: true,
+      fallbackFrom: 'ProviderA',
+    },
+  ],
+  raw: {},
+};
+
+export const mockTask: Task = mockTaskReport.task;
+
+export const mockCreateResponse: TaskCreateResponse = {
+  task: {
+    ...mockTask,
+    id: 'task-20260324-099',
+    status: 'queued',
+    budgetRemaining: 5,
+    updatedAt: '2026-03-24T10:20:00.000Z',
+  },
+  message: 'Task queued successfully',
+};
+
+export const mockProviderHealth: ProviderHealth[] = [
+  {
+    provider: 'ProviderA',
+    successRate: 42.1,
+    p95LatencyMs: 412,
+    avgCostPerSuccess: 0.012,
+    lastError: 'Simulated 500 Internal Server Error',
+    circuitBreakerStatus: 'warning',
+    lastCheckedAt: '2026-03-24T10:30:00.000Z',
+    totalAttempts: 118,
+    status: 'degraded',
+  },
+  {
+    provider: 'ProviderB',
+    successRate: 98.2,
+    p95LatencyMs: 9211,
+    avgCostPerSuccess: 0.021,
+    lastError: null,
+    circuitBreakerStatus: 'healthy',
+    lastCheckedAt: '2026-03-24T10:30:00.000Z',
+    totalAttempts: 201,
+    status: 'healthy',
+  },
+];
+
+export const mockPolicy: Policy = {
+  defaultBudgetCap: 5,
+  maxRetries: 2,
+  maxProvidersAttempted: 2,
+  stopLossThreshold: 0.8,
+  circuitBreakerThreshold: 4,
+  manualKillSwitch: false,
+  updatedAt: '2026-03-24T10:25:00.000Z',
+};
+
+export const mockSummaryStats: SummaryStats = {
+  totalTasksRun: 329,
+  successRate: 91.8,
+  totalSpent: 18.482,
+  avgCostPerTask: 0.056,
+  avgLatencyMs: 2854,
+  fallbackRate: 17.6,
+  recentTasks: [
+    mockTaskReport.task,
+    {
+      id: 'task-20260324-002',
+      prompt: 'Fetch the latest provider pricing notes.',
+      budgetMax: 1.5,
+      budgetRemaining: 1.41,
+      providerPolicy: 'cheapest-first',
+      maxRetries: 1,
+      status: 'success',
+      createdAt: '2026-03-24T09:58:00.000Z',
+      updatedAt: '2026-03-24T09:58:04.000Z',
+      metadata: {
+        team: 'research',
+      },
+    },
+    {
+      id: 'task-20260324-003',
+      prompt: 'Run policy-constrained summarization.',
+      budgetMax: 0.75,
+      budgetRemaining: 0.75,
+      providerPolicy: 'fastest-first',
+      maxRetries: 3,
+      status: 'failed',
+      createdAt: '2026-03-24T09:40:00.000Z',
+      updatedAt: '2026-03-24T09:40:09.000Z',
+      metadata: {},
+    },
+  ],
+  providerHealth: mockProviderHealth,
+  budgetUtilization: {
+    spent: 18.482,
+    cap: 24,
+    remaining: 5.518,
+  },
+  spendTrend: [
+    { label: '00:00', spent: 1.85, tasks: 28 },
+    { label: '06:00', spent: 2.93, tasks: 51 },
+    { label: '12:00', spent: 4.61, tasks: 74 },
+    { label: '18:00', spent: 5.41, tasks: 92 },
+    { label: 'Now', spent: 3.68, tasks: 84 },
+  ],
+};

@@ -1,0 +1,24 @@
+[
+  {
+    "provider": "ProviderA",
+    "successRate": 42.1,
+    "p95LatencyMs": 412,
+    "avgCostPerSuccess": 0.012,
+    "lastError": "Simulated 500 Internal Server Error",
+    "circuitBreakerStatus": "warning",
+    "lastCheckedAt": "2026-03-24T10:30:00.000Z",
+    "totalAttempts": 118,
+    "status": "degraded"
+  },
+  {
+    "provider": "ProviderB",
+    "successRate": 98.2,
+    "p95LatencyMs": 9211,
+    "avgCostPerSuccess": 0.021,
+    "lastError": null,
+    "circuitBreakerStatus": "healthy",
+    "lastCheckedAt": "2026-03-24T10:30:00.000Z",
+    "totalAttempts": 201,
+    "status": "healthy"
+  }
+]

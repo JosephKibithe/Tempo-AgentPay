@@ -1,0 +1,87 @@
+{
+  "totalTasksRun": 329,
+  "successRate": 91.8,
+  "totalSpent": 18.482,
+  "avgCostPerTask": 0.056,
+  "avgLatencyMs": 2854,
+  "fallbackRate": 17.6,
+  "recentTasks": [
+    {
+      "id": "task-20260324-001",
+      "prompt": "What is the future of autonomous agents?",
+      "budgetMax": 5,
+      "budgetRemaining": 4.98,
+      "providerPolicy": "primary-first",
+      "maxRetries": 2,
+      "status": "success",
+      "createdAt": "2026-03-24T10:12:00.000Z",
+      "updatedAt": "2026-03-24T10:12:12.000Z",
+      "metadata": {
+        "tenant": "demo",
+        "requestedBy": "operator"
+      }
+    },
+    {
+      "id": "task-20260324-002",
+      "prompt": "Fetch the latest provider pricing notes.",
+      "budgetMax": 1.5,
+      "budgetRemaining": 1.41,
+      "providerPolicy": "cheapest-first",
+      "maxRetries": 1,
+      "status": "success",
+      "createdAt": "2026-03-24T09:58:00.000Z",
+      "updatedAt": "2026-03-24T09:58:04.000Z",
+      "metadata": {
+        "team": "research"
+      }
+    },
+    {
+      "id": "task-20260324-003",
+      "prompt": "Run policy-constrained summarization.",
+      "budgetMax": 0.75,
+      "budgetRemaining": 0.75,
+      "providerPolicy": "fastest-first",
+      "maxRetries": 3,
+      "status": "failed",
+      "createdAt": "2026-03-24T09:40:00.000Z",
+      "updatedAt": "2026-03-24T09:40:09.000Z",
+      "metadata": {}
+    }
+  ],
+  "providerHealth": [
+    {
+      "provider": "ProviderA",
+      "successRate": 42.1,
+      "p95LatencyMs": 412,
+      "avgCostPerSuccess": 0.012,
+      "lastError": "Simulated 500 Internal Server Error",
+      "circuitBreakerStatus": "warning",
+      "lastCheckedAt": "2026-03-24T10:30:00.000Z",
+      "totalAttempts": 118,
+      "status": "degraded"
+    },
+    {
+      "provider": "ProviderB",
+      "successRate": 98.2,
+      "p95LatencyMs": 9211,
+      "avgCostPerSuccess": 0.021,
+      "lastError": null,
+      "circuitBreakerStatus": "healthy",
+      "lastCheckedAt": "2026-03-24T10:30:00.000Z",
+      "totalAttempts": 201,
+      "status": "healthy"
+    }
+  ],
+  "budgetUtilization": {
+    "spent": 18.482,
+    "cap": 24,
+    "remaining": 5.518
+  },
+  "spendTrend": [
+    { "label": "00:00", "spent": 1.85, "tasks": 28 },
+    { "label": "06:00", "spent": 2.93, "tasks": 51 },
+    { "label": "12:00", "spent": 4.61, "tasks": 74 },
+    { "label": "18:00", "spent": 5.41, "tasks": 92 },
+    { "label": "Now", "spent": 3.68, "tasks": 84 }
+  ]
+}

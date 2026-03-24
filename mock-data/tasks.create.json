@@ -1,0 +1,17 @@
+{
+  "task": {
+    "id": "task-20260324-099",
+    "prompt": "Summarize provider routing performance for the last hour.",
+    "budgetMax": 5,
+    "budgetRemaining": 5,
+    "providerPolicy": "primary-first",
+    "maxRetries": 2,
+    "status": "queued",
+    "createdAt": "2026-03-24T10:20:00.000Z",
+    "updatedAt": "2026-03-24T10:20:00.000Z",
+    "metadata": {
+      "tenant": "demo"
+    }
+  },
+  "message": "Task queued successfully"
+}

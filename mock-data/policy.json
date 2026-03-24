@@ -1,0 +1,9 @@
+{
+  "defaultBudgetCap": 5,
+  "maxRetries": 2,
+  "maxProvidersAttempted": 2,
+  "stopLossThreshold": 0.8,
+  "circuitBreakerThreshold": 4,
+  "manualKillSwitch": false,
+  "updatedAt": "2026-03-24T10:25:00.000Z"
+}

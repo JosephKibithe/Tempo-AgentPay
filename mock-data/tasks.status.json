@@ -1,0 +1,15 @@
+{
+  "id": "task-20260324-001",
+  "prompt": "What is the future of autonomous agents?",
+  "budgetMax": 5,
+  "budgetRemaining": 4.98,
+  "providerPolicy": "primary-first",
+  "maxRetries": 2,
+  "status": "success",
+  "createdAt": "2026-03-24T10:12:00.000Z",
+  "updatedAt": "2026-03-24T10:12:12.000Z",
+  "metadata": {
+    "tenant": "demo",
+    "requestedBy": "operator"
+  }
+}
