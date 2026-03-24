@@ -3,7 +3,7 @@ import { PageShell } from '@/components/ui';
 
 export default function ProvidersPage() {
   return (
-    <PageShell eyebrow="Routing" title="Provider Health">
+    <PageShell eyebrow="Runtime" title="Retrieval Health">
       <ProviderHealthTable />
     </PageShell>
   );

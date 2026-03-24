@@ -3,8 +3,8 @@ import { PageShell } from '@/components/ui';
 
 export default function TaskDetailPage({ params }: { params: { id: string } }) {
   return (
-    <PageShell eyebrow="Execution Trace" title={`Task ${params.id}`}>
-      <TaskDetail taskId={params.id} />
+    <PageShell eyebrow="Receipt Detail" title={`Query ${params.id}`}>
+      <TaskDetail queryId={params.id} />
     </PageShell>
   );
 }

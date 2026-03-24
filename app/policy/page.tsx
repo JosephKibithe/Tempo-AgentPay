@@ -3,7 +3,7 @@ import { PageShell } from '@/components/ui';
 
 export default function PolicyPage() {
   return (
-    <PageShell eyebrow="Controls" title="Policy Control">
+    <PageShell eyebrow="Commerce Controls" title="Pricing Policy">
       <PolicyForm />
     </PageShell>
   );

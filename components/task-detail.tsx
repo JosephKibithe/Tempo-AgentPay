@@ -3,24 +3,24 @@
 import { useMemo } from 'react';
 
 import { useApi } from '@/lib/http';
-import type { TaskReport } from '@/lib/types';
-import { formatDateTime, formatLatency, formatMoney } from '@/lib/format';
+import type { QueryReport } from '@/lib/types';
+import { formatDateTime, formatLatency, formatMoney, formatPercent } from '@/lib/format';
 import { Button, Card, EmptyState, ErrorState, LoadingState, StatusPill } from '@/components/ui';
 
-export function TaskDetail({ taskId }: { taskId: string }) {
-  const { data, error, mutate, isLoading } = useApi<TaskReport>(`/api/tasks/${taskId}/report`);
+export function QueryDetail({ queryId }: { queryId: string }) {
+  const { data, error, mutate, isLoading } = useApi<QueryReport>(`/api/queries/${queryId}/report`);
 
   const downloadData = useMemo(() => {
     if (!data) return null;
     return URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
   }, [data]);
 
-  if (isLoading) return <LoadingState label="Loading task report..." />;
+  if (isLoading) return <LoadingState label="Loading query receipt..." />;
   if (error || !data) {
     return (
       <ErrorState
-        title="Task report unavailable"
-        detail={error?.message ?? 'No task report returned.'}
+        title="Query receipt unavailable"
+        detail={error?.message ?? 'No query report returned.'}
         onRetry={() => void mutate()}
       />
     );
@@ -29,30 +29,30 @@ export function TaskDetail({ taskId }: { taskId: string }) {
   return (
     <div className="space-y-6">
       <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-        <Card title="Task Metadata" kicker="Execution Envelope">
+        <Card title="Query Envelope" kicker="Paid Request">
           <dl className="grid gap-4 md:grid-cols-2">
-            <MetaRow label="Task ID" value={data.task.id} mono />
-            <MetaRow label="Policy" value={data.task.providerPolicy} />
-            <MetaRow label="Budget Max" value={formatMoney(data.task.budgetMax)} />
-            <MetaRow label="Budget Remaining" value={formatMoney(data.remainingBudget)} />
-            <MetaRow label="Created" value={formatDateTime(data.task.createdAt)} />
-            <MetaRow label="Updated" value={formatDateTime(data.task.updatedAt)} />
+            <MetaRow label="Query ID" value={data.query.id} mono />
+            <MetaRow label="Source Collection" value={data.query.sourceLabel} />
+            <MetaRow label="Mode" value={data.query.mode} />
+            <MetaRow label="Price Ceiling" value={formatMoney(data.query.priceCeiling)} />
+            <MetaRow label="Created" value={formatDateTime(data.query.createdAt)} />
+            <MetaRow label="Updated" value={formatDateTime(data.query.updatedAt)} />
           </dl>
           <div className="mt-5 rounded-sm border border-line bg-panelSoft/60 p-4">
-            <p className="wf-label">Prompt</p>
-            <p className="mt-3 text-sm leading-7 text-ink">{data.task.prompt}</p>
+            <p className="wf-label">Question</p>
+            <p className="mt-3 text-sm leading-7 text-ink">{data.query.question}</p>
           </div>
         </Card>
-        <Card title="Final Outcome" kicker="Settlement Summary">
+        <Card title="Receipt" kicker="Settlement">
           <div className="flex items-center justify-between gap-4">
             <StatusPill
-              label={data.finalStatus}
-              tone={data.finalStatus === 'success' ? 'success' : data.finalStatus === 'failed' ? 'danger' : 'warning'}
+              label={data.query.status}
+              tone={data.query.status === 'answered' ? 'success' : data.query.status === 'failed' ? 'danger' : 'warning'}
             />
             {downloadData ? (
               <a
                 href={downloadData}
-                download={`${data.task.id}.json`}
+                download={`${data.query.id}.json`}
                 className="rounded-sm border border-line px-4 py-2 text-sm font-medium uppercase tracking-[0.12em] text-ink transition hover:bg-white/5"
               >
                 Download JSON
@@ -60,36 +60,63 @@ export function TaskDetail({ taskId }: { taskId: string }) {
             ) : null}
           </div>
           <div className="mt-6 grid gap-4 md:grid-cols-2">
-            <Metric label="Total Spent" value={formatMoney(data.totalSpent)} />
-            <Metric label="Remaining Budget" value={formatMoney(data.remainingBudget)} />
-            <Metric label="Average Latency" value={formatLatency(data.averageLatencyMs)} />
-            <Metric label="Fallback Events" value={String(data.fallbackCount)} />
+            <Metric label="Charged" value={formatMoney(data.receipt.amount)} />
+            <Metric label="Latency" value={formatLatency(data.latencyMs)} />
+            <Metric label="Confidence" value={formatPercent(data.confidence * 100)} />
+            <Metric label="Citations" value={String(data.citations.length)} />
           </div>
           <div className="mt-5 rounded-sm border border-line bg-panelSoft/60 p-4">
-            <p className="wf-label">Final Output</p>
-            <p className="mt-3 text-sm leading-7 text-ink">{data.output ?? 'No output returned.'}</p>
+            <p className="wf-label">Settlement Rail</p>
+            <p className="mt-3 text-sm text-ink">{data.receipt.settlementRail}</p>
+            <p className="mt-2 text-xs text-muted">
+              {data.receipt.id} · {formatDateTime(data.receipt.settledAt)}
+            </p>
           </div>
         </Card>
       </div>
 
-      <Card title="Attempt Timeline" kicker="Provider Trace">
-        {data.attempts.length === 0 ? (
-          <EmptyState title="No attempts recorded" detail="The backend did not return ledger attempts for this task." />
+      <Card title="Answer" kicker="Grounded Response">
+        <p className="text-sm leading-7 text-ink">{data.answer ?? 'No answer returned.'}</p>
+      </Card>
+
+      <Card title="Citations" kicker="Source Coverage">
+        {data.citations.length === 0 ? (
+          <EmptyState title="No citations attached" detail="This answer did not return source excerpts." />
         ) : (
           <div className="space-y-4">
-            {data.attempts.map((attempt, index) => (
+            {data.citations.map((citation) => (
+              <div key={citation.id} className="rounded-sm border border-line bg-panelSoft/55 p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-medium text-ink">{citation.title}</p>
+                    <p className="mt-1 text-xs text-muted">{citation.uri}</p>
+                  </div>
+                  <StatusPill label={`${citation.score} hits`} tone="neutral" />
+                </div>
+                <p className="mt-3 text-sm leading-7 text-muted">{citation.excerpt}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      <Card title="Pipeline Trace" kicker="Retrieval + Synthesis">
+        {data.attempts.length === 0 ? (
+          <EmptyState title="No pipeline attempts recorded" detail="The backend did not return query stage telemetry." />
+        ) : (
+          <div className="space-y-4">
+            {data.attempts.map((attempt) => (
               <div key={attempt.id} className="rounded-sm border border-line bg-panelSoft/55 p-4">
                 <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                   <div>
                     <div className="flex flex-wrap items-center gap-3">
                       <span className="text-sm font-medium text-ink">
-                        Attempt {index + 1}: {attempt.provider}
+                        {attempt.stage} via {attempt.provider}
                       </span>
                       <StatusPill
                         label={attempt.status}
                         tone={attempt.status === 'success' ? 'success' : attempt.status === 'failed' ? 'danger' : 'warning'}
                       />
-                      {attempt.isFallback ? <StatusPill label={`Fallback from ${attempt.fallbackFrom}`} tone="warning" /> : null}
                     </div>
                     <p className="mt-2 font-mono text-xs text-muted">{attempt.endpoint}</p>
                   </div>
@@ -100,9 +127,9 @@ export function TaskDetail({ taskId }: { taskId: string }) {
                     <span>Completed: {formatDateTime(attempt.completedAt)}</span>
                   </div>
                 </div>
-                {attempt.error ? (
-                  <div className="mt-4 rounded-sm border border-accentRed/30 bg-accentRed/10 px-4 py-3 text-sm text-ink">
-                    {attempt.error}
+                {attempt.notes ? (
+                  <div className="mt-4 rounded-sm border border-white/10 bg-black/30 px-4 py-3 text-sm text-ink">
+                    {attempt.notes}
                   </div>
                 ) : null}
               </div>
@@ -112,7 +139,7 @@ export function TaskDetail({ taskId }: { taskId: string }) {
       </Card>
       <div className="flex justify-end">
         <Button type="button" variant="secondary" onClick={() => void mutate()}>
-          Refresh Report
+          Refresh Receipt
         </Button>
       </div>
     </div>
@@ -136,3 +163,5 @@ function Metric({ label, value }: { label: string; value: string }) {
     </div>
   );
 }
+
+export const TaskDetail = QueryDetail;

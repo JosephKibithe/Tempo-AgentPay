@@ -38,63 +38,53 @@ export function PolicyForm() {
     }
   }
 
-  if (isLoading) return <LoadingState label="Loading policy controls..." />;
+  if (isLoading) return <LoadingState label="Loading pricing policy..." />;
   if (error || !form) {
-    return <ErrorState title="Policy unavailable" detail={error?.message ?? 'No policy payload returned.'} onRetry={() => void mutate()} />;
+    return <ErrorState title="Pricing policy unavailable" detail={error?.message ?? 'No policy payload returned.'} onRetry={() => void mutate()} />;
   }
 
   return (
-    <Card title="Policy Controls" kicker="Runtime Guardrails">
+    <Card title="Pricing Controls" kicker="Commerce Guardrails">
       <form className="space-y-5" onSubmit={onSubmit}>
         <div className="grid gap-5 md:grid-cols-2">
-          <Field label="Default Budget Cap" htmlFor="defaultBudgetCap" hint="Fallback cap applied when a task does not specify its own budget.">
+          <Field label="Default Price Ceiling" htmlFor="defaultPriceCeiling" hint="Fallback maximum charge when a query does not specify its own ceiling.">
             <input
-              id="defaultBudgetCap"
+              id="defaultPriceCeiling"
               className={inputClassName()}
-              value={form.defaultBudgetCap}
-              onChange={(event) => setForm((current) => (current ? { ...current, defaultBudgetCap: Number(event.target.value) } : current))}
+              value={form.defaultPriceCeiling}
+              onChange={(event) => setForm((current) => (current ? { ...current, defaultPriceCeiling: Number(event.target.value) } : current))}
             />
           </Field>
-          <Field label="Max Retries" htmlFor="maxRetries" hint="Maximum attempts per provider before failover.">
+          <Field label="Deep Mode Surcharge" htmlFor="deepModeSurcharge" hint="Additional charge applied when customers request deeper retrieval and synthesis.">
             <input
-              id="maxRetries"
+              id="deepModeSurcharge"
               className={inputClassName()}
-              value={form.maxRetries}
-              onChange={(event) => setForm((current) => (current ? { ...current, maxRetries: Number(event.target.value) } : current))}
-            />
-          </Field>
-        </div>
-        <div className="grid gap-5 md:grid-cols-2">
-          <Field label="Max Providers Attempted" htmlFor="maxProvidersAttempted" hint="Hard ceiling for providers touched in one task run.">
-            <input
-              id="maxProvidersAttempted"
-              className={inputClassName()}
-              value={form.maxProvidersAttempted}
-              onChange={(event) => setForm((current) => (current ? { ...current, maxProvidersAttempted: Number(event.target.value) } : current))}
-            />
-          </Field>
-          <Field label="Stop-Loss Threshold" htmlFor="stopLossThreshold" hint="Fraction of budget spend that triggers a stop condition.">
-            <input
-              id="stopLossThreshold"
-              className={inputClassName()}
-              value={form.stopLossThreshold}
-              onChange={(event) => setForm((current) => (current ? { ...current, stopLossThreshold: Number(event.target.value) } : current))}
+              value={form.deepModeSurcharge}
+              onChange={(event) => setForm((current) => (current ? { ...current, deepModeSurcharge: Number(event.target.value) } : current))}
             />
           </Field>
         </div>
         <div className="grid gap-5 md:grid-cols-2">
-          <Field label="Circuit Breaker Threshold" htmlFor="circuitBreakerThreshold" hint="Failure count that opens the provider circuit.">
+          <Field label="Max Citations Per Answer" htmlFor="maxCitationsPerAnswer" hint="Upper bound on synchronous citations attached to an answer receipt.">
             <input
-              id="circuitBreakerThreshold"
+              id="maxCitationsPerAnswer"
               className={inputClassName()}
-              value={form.circuitBreakerThreshold}
-              onChange={(event) => setForm((current) => (current ? { ...current, circuitBreakerThreshold: Number(event.target.value) } : current))}
+              value={form.maxCitationsPerAnswer}
+              onChange={(event) => setForm((current) => (current ? { ...current, maxCitationsPerAnswer: Number(event.target.value) } : current))}
+            />
+          </Field>
+          <Field label="Max Sources Per Query" htmlFor="maxSourcesPerQuery" hint="Hard cap on the number of documents pulled into a single paid answer.">
+            <input
+              id="maxSourcesPerQuery"
+              className={inputClassName()}
+              value={form.maxSourcesPerQuery}
+              onChange={(event) => setForm((current) => (current ? { ...current, maxSourcesPerQuery: Number(event.target.value) } : current))}
             />
           </Field>
           <label className="flex items-center justify-between rounded-sm border border-line bg-panelSoft px-4 py-3">
             <span>
               <span className="block text-sm font-medium text-ink">Manual Kill-Switch</span>
-              <span className="block text-xs text-muted">Prevent new task admission while preserving read-only visibility.</span>
+              <span className="block text-xs text-muted">Pause new paid queries while preserving dashboards and receipts.</span>
             </span>
             <input
               type="checkbox"

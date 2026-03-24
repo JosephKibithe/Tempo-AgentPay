@@ -33,7 +33,7 @@ export function Card({
   className,
 }: PropsWithChildren<{ title?: string; kicker?: string; className?: string }>) {
   return (
-    <section className={clsx('wf-card rounded-sm border border-white/10 bg-panel/95 p-5 shadow-glow', className)}>
+    <section className={clsx('wireframe-card rounded-sm bg-black/80 p-5', className)}>
       {(title || kicker) && (
         <div className="mb-4 flex items-start justify-between gap-4">
           <div>
@@ -120,7 +120,7 @@ export function StatusPill({
 
 export function LoadingState({ label = 'Loading data...' }: { label?: string }) {
   return (
-    <div className="flex min-h-40 items-center justify-center rounded-3xl border border-dashed border-line bg-panelSoft/40 p-6 text-sm text-muted">
+    <div className="flex min-h-40 items-center justify-center rounded-sm border border-dashed border-white/10 bg-white/[0.03] p-6 text-sm text-muted">
       {label}
     </div>
   );
@@ -128,7 +128,7 @@ export function LoadingState({ label = 'Loading data...' }: { label?: string }) 
 
 export function EmptyState({ title, detail }: { title: string; detail: string }) {
   return (
-    <div className="flex min-h-40 flex-col items-center justify-center rounded-3xl border border-dashed border-line bg-panelSoft/40 p-6 text-center">
+    <div className="flex min-h-40 flex-col items-center justify-center rounded-sm border border-dashed border-white/10 bg-white/[0.03] p-6 text-center">
       <p className="text-sm font-medium text-ink">{title}</p>
       <p className="mt-2 max-w-md text-sm text-muted">{detail}</p>
     </div>
@@ -145,14 +145,14 @@ export function ErrorState({
   onRetry?: () => void;
 }) {
   return (
-    <div className="rounded-3xl border border-accentRed/30 bg-accentRed/10 p-5">
+    <div className="rounded-sm border border-red-400/30 bg-red-400/10 p-5">
       <p className="text-sm font-medium text-ink">{title}</p>
       <p className="mt-2 text-sm text-muted">{detail}</p>
       {onRetry ? (
         <button
           type="button"
           onClick={onRetry}
-          className="mt-4 rounded-sm border border-accentRed/40 px-4 py-2 text-sm font-medium text-ink transition hover:bg-accentRed/10"
+          className="mt-4 rounded-sm border border-red-400/40 px-4 py-2 text-sm font-medium text-ink transition hover:bg-red-400/10"
         >
           Retry
         </button>
@@ -200,5 +200,5 @@ export function Field({
 }
 
 export function inputClassName() {
-  return 'w-full rounded-sm border border-white/15 bg-panelSoft px-4 py-3 text-sm text-ink outline-none transition placeholder:text-muted focus:border-white/40';
+  return 'w-full rounded-sm border border-white/15 bg-transparent px-4 py-3 text-sm text-ink outline-none transition placeholder:text-muted focus:border-white/40';
 }

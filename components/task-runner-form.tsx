@@ -3,23 +3,26 @@
 import { useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 
-import { sanitizeCreateTaskPayload } from '@/lib/agentpay';
-import { fetchJson } from '@/lib/http';
-import type { CreateTaskPayload, TaskCreateResponse } from '@/lib/types';
+import { sanitizeCreateQueryPayload } from '@/lib/agentpay';
+import { fetchJson, useApi } from '@/lib/http';
+import type { CreateQueryPayload, KnowledgeSource, QueryCreateResponse } from '@/lib/types';
 import { useToast } from '@/components/providers';
-import { Button, Card, Field, inputClassName, StatusPill } from '@/components/ui';
+import { Button, Card, ErrorState, Field, LoadingState, inputClassName, StatusPill } from '@/components/ui';
+import { formatMoney } from '@/lib/format';
 
-export function TaskRunnerForm() {
+export function KnowledgeQueryForm() {
   const router = useRouter();
   const { pushToast } = useToast();
+  const { data: sources, error: sourcesError, mutate: retrySources, isLoading: sourcesLoading } =
+    useApi<KnowledgeSource[]>('/api/sources');
   const [loading, setLoading] = useState(false);
-  const [response, setResponse] = useState<TaskCreateResponse | null>(null);
+  const [response, setResponse] = useState<QueryCreateResponse | null>(null);
   const [form, setForm] = useState({
-    prompt: '',
-    budgetMax: '5',
-    providerPolicy: 'primary-first',
-    maxRetries: '2',
-    metadata: '{\n  "tenant": "demo"\n}',
+    question: '',
+    sourceId: 'pricing-ops',
+    mode: 'balanced',
+    priceCeiling: '0.04',
+    tags: '{\n  "workspace": "revops"\n}',
   });
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
@@ -27,121 +30,146 @@ export function TaskRunnerForm() {
     setLoading(true);
 
     try {
-      const metadata = form.metadata.trim() ? (JSON.parse(form.metadata) as Record<string, string>) : undefined;
-      const payload = sanitizeCreateTaskPayload({
-        prompt: form.prompt,
-        budgetMax: Number.parseFloat(form.budgetMax),
-        providerPolicy: form.providerPolicy as CreateTaskPayload['providerPolicy'],
-        maxRetries: Number.parseInt(form.maxRetries, 10),
-        ...(metadata ? { metadata } : {}),
+      const tags = form.tags.trim() ? (JSON.parse(form.tags) as Record<string, string>) : undefined;
+      const payload = sanitizeCreateQueryPayload({
+        question: form.question,
+        sourceId: form.sourceId,
+        mode: form.mode as CreateQueryPayload['mode'],
+        priceCeiling: Number.parseFloat(form.priceCeiling),
+        ...(tags ? { tags } : {}),
       });
 
-      const data = await fetchJson<TaskCreateResponse>('/api/tasks', {
+      const data = await fetchJson<QueryCreateResponse>('/api/queries', {
         method: 'POST',
         body: JSON.stringify(payload),
       });
 
       setResponse(data);
-      pushToast('Task created successfully', 'success');
-      router.prefetch(`/tasks/${data.task.id}`);
+      pushToast('Paid query completed', 'success');
+      router.prefetch(`/queries/${data.query.id}`);
     } catch (error) {
-      pushToast(error instanceof Error ? error.message : 'Failed to create task', 'error');
+      pushToast(error instanceof Error ? error.message : 'Failed to process query', 'error');
     } finally {
       setLoading(false);
     }
   }
 
+  if (sourcesLoading) return <LoadingState label="Loading source collections..." />;
+  if (sourcesError || !sources) {
+    return (
+      <ErrorState
+        title="Source collections unavailable"
+        detail={sourcesError?.message ?? 'No source catalog returned.'}
+        onRetry={() => void retrySources()}
+      />
+    );
+  }
+
   return (
     <div className="grid gap-6 xl:grid-cols-[1.25fr_0.8fr]">
-      <Card title="New Task" kicker="Execution Request">
+      <Card title="Ask the Knowledge Base" kicker="Paid Query">
         <form className="space-y-5" onSubmit={onSubmit}>
-          <Field label="Task Objective" htmlFor="prompt" hint="Describe the result the agent runtime should obtain within the budget envelope.">
+          <Field
+            label="Question"
+            htmlFor="question"
+            hint="Ask for a recommendation, policy summary, or operational answer grounded in one source collection."
+          >
             <textarea
-              id="prompt"
+              id="question"
               required
               className={`${inputClassName()} min-h-40 resize-y`}
-              value={form.prompt}
-              onChange={(event) => setForm((current) => ({ ...current, prompt: event.target.value }))}
-              placeholder="Summarize provider routing health over the last hour and flag abnormal fallback activity."
+              value={form.question}
+              onChange={(event) => setForm((current) => ({ ...current, question: event.target.value }))}
+              placeholder="What discount structure should we use for a proof-of-value customer without hurting renewal margin?"
             />
           </Field>
           <div className="grid gap-5 md:grid-cols-2">
-            <Field label="Budget Cap (USD)" htmlFor="budgetMax">
-              <input
-                id="budgetMax"
-                required
-                inputMode="decimal"
-                className={inputClassName()}
-                value={form.budgetMax}
-                onChange={(event) => setForm((current) => ({ ...current, budgetMax: event.target.value }))}
-              />
-            </Field>
-            <Field label="Provider Policy" htmlFor="providerPolicy">
+            <Field label="Source Collection" htmlFor="sourceId">
               <select
-                id="providerPolicy"
+                id="sourceId"
                 className={inputClassName()}
-                value={form.providerPolicy}
-                onChange={(event) => setForm((current) => ({ ...current, providerPolicy: event.target.value }))}
+                value={form.sourceId}
+                onChange={(event) => setForm((current) => ({ ...current, sourceId: event.target.value }))}
               >
-                <option value="primary-first">Primary first</option>
-                <option value="cheapest-first">Cheapest first</option>
-                <option value="fastest-first">Fastest first</option>
+                {sources.map((source) => (
+                  <option key={source.id} value={source.id}>
+                    {source.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Query Mode" htmlFor="mode">
+              <select
+                id="mode"
+                className={inputClassName()}
+                value={form.mode}
+                onChange={(event) => setForm((current) => ({ ...current, mode: event.target.value }))}
+              >
+                <option value="fast">Fast</option>
+                <option value="balanced">Balanced</option>
+                <option value="deep">Deep</option>
               </select>
             </Field>
           </div>
           <div className="grid gap-5 md:grid-cols-2">
-            <Field label="Max Retries" htmlFor="maxRetries">
+            <Field label="Price Ceiling (USD)" htmlFor="priceCeiling" hint="Hard cap for the billed answer.">
               <input
-                id="maxRetries"
+                id="priceCeiling"
                 required
-                inputMode="numeric"
+                inputMode="decimal"
                 className={inputClassName()}
-                value={form.maxRetries}
-                onChange={(event) => setForm((current) => ({ ...current, maxRetries: event.target.value }))}
+                value={form.priceCeiling}
+                onChange={(event) => setForm((current) => ({ ...current, priceCeiling: event.target.value }))}
               />
             </Field>
-            <Field label="Optional Metadata" htmlFor="metadata" hint="Optional JSON tags forwarded to the backend adapter.">
+            <Field label="Tags" htmlFor="tags" hint="Optional JSON metadata stored with the receipt.">
               <textarea
-                id="metadata"
+                id="tags"
                 className={`${inputClassName()} min-h-32 font-mono`}
-                value={form.metadata}
-                onChange={(event) => setForm((current) => ({ ...current, metadata: event.target.value }))}
+                value={form.tags}
+                onChange={(event) => setForm((current) => ({ ...current, tags: event.target.value }))}
               />
             </Field>
           </div>
           <div className="flex items-center gap-3">
             <Button type="submit" disabled={loading}>
-              {loading ? 'Submitting...' : 'Dispatch Task'}
+              {loading ? 'Charging...' : 'Run Paid Query'}
             </Button>
             {response ? (
-              <Button type="button" variant="secondary" onClick={() => router.push(`/tasks/${response.task.id}`)}>
-                Open Run Detail
+              <Button type="button" variant="secondary" onClick={() => router.push(`/queries/${response.query.id}`)}>
+                Open Receipt
               </Button>
             ) : null}
           </div>
         </form>
       </Card>
-      <Card title="Submission Status" kicker="Immediate Result">
+      <Card title="Charge Preview" kicker="Receipt Estimate">
         {response ? (
           <div className="space-y-4">
             <div className="rounded-sm border border-line bg-panelSoft/60 p-4">
-              <p className="wf-label">Task ID</p>
-              <p className="mt-2 font-mono text-sm text-ink">{response.task.id}</p>
+              <p className="wf-label">Query ID</p>
+              <p className="mt-2 font-mono text-sm text-ink">{response.query.id}</p>
             </div>
             <div className="rounded-sm border border-line bg-panelSoft/60 p-4">
               <p className="wf-label">Current Status</p>
               <div className="mt-3">
-                <StatusPill label={response.task.status} tone="warning" />
+                <StatusPill label={response.query.status} tone={response.query.status === 'answered' ? 'success' : 'warning'} />
               </div>
+            </div>
+            <div className="rounded-sm border border-line bg-panelSoft/60 p-4">
+              <p className="wf-label">Estimated Charge</p>
+              <p className="mt-2 text-xl font-semibold text-accentGreen">{formatMoney(response.estimatedCharge)}</p>
             </div>
             <p className="text-sm text-muted">{response.message}</p>
           </div>
         ) : (
           <div className="rounded-sm border border-dashed border-line bg-panelSoft/40 p-5 text-sm text-muted">
-            Dispatch a task to show the issued task ID and initial execution state here.
+            Submit a query to see the charged amount, receipt link, and answer status here.
           </div>
         )}
       </Card>
     </div>
   );
 }
+
+export const TaskRunnerForm = KnowledgeQueryForm;

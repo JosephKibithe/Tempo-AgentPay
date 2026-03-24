@@ -7,8 +7,8 @@ import { AppProviders } from '@/components/providers';
 import '@/app/globals.css';
 
 export const metadata: Metadata = {
-  title: 'TempoAgentPay',
-  description: 'Production-style demo dashboard for budget-safe paid-agent operations.',
+  title: 'Tempo Query Commerce',
+  description: 'Pay-per-query knowledge base with grounded answers, receipts, and source-aware pricing.',
 };
 
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {

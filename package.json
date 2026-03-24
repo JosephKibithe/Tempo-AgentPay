@@ -1,7 +1,7 @@
 {
   "name": "tempo-agentpay",
   "version": "1.0.0",
-  "description": "TempoAgentPay dashboard and MVP backend demo",
+  "description": "Pay-per-query knowledge base with Tempo-native receipts and retrieval telemetry",
   "type": "module",
   "main": "dist/index.js",
   "scripts": {

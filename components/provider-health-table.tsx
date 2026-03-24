@@ -23,7 +23,7 @@ export function ProviderHealthTable() {
   }, [data, sortKey, statusFilter]);
 
   return (
-    <Card title="Provider Health Matrix" kicker="Operational Signals">
+    <Card title="Retrieval Health Matrix" kicker="Operational Signals">
       <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div className="flex gap-3">
           <select
@@ -49,18 +49,18 @@ export function ProviderHealthTable() {
         </div>
       </div>
       {isLoading ? (
-        <LoadingState label="Loading provider health..." />
+        <LoadingState label="Loading retrieval health..." />
       ) : error || !data ? (
-        <ErrorState title="Provider health failed to load" detail={error?.message ?? 'No provider health data returned.'} onRetry={() => void mutate()} />
+        <ErrorState title="Retrieval health failed to load" detail={error?.message ?? 'No retrieval health data returned.'} onRetry={() => void mutate()} />
       ) : (
         <div className="overflow-x-auto">
           <table className="min-w-full text-left text-sm">
             <thead className="text-xs uppercase tracking-[0.25em] text-muted">
               <tr>
-                <th className="pb-3">Provider</th>
+                <th className="pb-3">Engine</th>
                 <th className="pb-3">Success Rate</th>
                 <th className="pb-3">p95 Latency</th>
-                <th className="pb-3">Avg Cost / Success</th>
+                <th className="pb-3">Avg Cost / Answer</th>
                 <th className="pb-3">Last Error</th>
                 <th className="pb-3">Circuit</th>
                 <th className="pb-3">Last Check</th>

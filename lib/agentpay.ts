@@ -1,17 +1,18 @@
 import type {
-  AttemptStatus,
-  CircuitBreakerStatus,
-  CreateTaskPayload,
+  Citation,
+  CreateQueryPayload,
+  KnowledgeSource,
+  PaymentReceipt,
   Policy,
   ProviderHealth,
-  ProviderPolicy,
+  Query,
+  QueryAttempt,
+  QueryCreateResponse,
+  QueryMode,
+  QueryReport,
+  QueryStatus,
   SummaryPoint,
   SummaryStats,
-  Task,
-  TaskAttempt,
-  TaskCreateResponse,
-  TaskReport,
-  TaskStatus,
 } from '@/lib/types';
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -42,31 +43,39 @@ function toIsoDate(value: unknown): string {
   return new Date().toISOString();
 }
 
-function toMetadata(value: unknown): Record<string, string> {
+function toStringMap(value: unknown): Record<string, string> {
   const record = asRecord(value);
   if (!record) return {};
 
   return Object.fromEntries(
-    Object.entries(record)
-      .filter((entry): entry is [string, unknown] => typeof entry[0] === 'string')
-      .map(([key, inner]) => [key, typeof inner === 'string' ? inner : JSON.stringify(inner)])
+    Object.entries(record).map(([key, inner]) => [key, typeof inner === 'string' ? inner : JSON.stringify(inner)])
   );
 }
 
-function toTaskStatus(value: unknown): TaskStatus {
+function toQueryStatus(value: unknown): QueryStatus {
   switch (value) {
-    case 'queued':
-    case 'running':
-    case 'success':
+    case 'processing':
+    case 'answered':
     case 'partial':
     case 'failed':
       return value;
     default:
-      return 'queued';
+      return 'processing';
   }
 }
 
-function toAttemptStatus(value: unknown): AttemptStatus {
+function toQueryMode(value: unknown): QueryMode {
+  switch (value) {
+    case 'balanced':
+    case 'fast':
+    case 'deep':
+      return value;
+    default:
+      return 'balanced';
+  }
+}
+
+function toAttemptStatus(value: unknown): QueryAttempt['status'] {
   switch (value) {
     case 'success':
     case 'failed':
@@ -77,107 +86,87 @@ function toAttemptStatus(value: unknown): AttemptStatus {
   }
 }
 
-function toProviderPolicy(value: unknown): ProviderPolicy {
-  switch (value) {
-    case 'cheapest-first':
-    case 'fastest-first':
-    case 'primary-first':
-      return value;
-    default:
-      return 'primary-first';
-  }
-}
-
-function toCircuitStatus(value: unknown): CircuitBreakerStatus {
-  switch (value) {
-    case 'healthy':
-    case 'warning':
-    case 'open':
-      return value;
-    default:
-      return 'healthy';
-  }
-}
-
-export function normalizeTask(value: unknown, fallbackId?: string): Task {
+function normalizeCitation(value: unknown, index: number): Citation {
   const record = asRecord(value) ?? {};
-  const id = toString(record.id ?? record.taskId, fallbackId ?? 'task-unknown');
 
   return {
-    id,
-    prompt: toString(record.prompt ?? record.input, 'No prompt provided'),
-    budgetMax: toNumber(record.budgetMax, 0),
-    budgetRemaining: toNumber(record.budgetRemaining, toNumber(record.budgetMax, 0)),
-    providerPolicy: toProviderPolicy(record.providerPolicy),
-    maxRetries: toNumber(record.maxRetries, 2),
-    status: toTaskStatus(record.status ?? record.finalStatus),
-    createdAt: toIsoDate(record.createdAt ?? record.requestedAt),
-    updatedAt: toIsoDate(record.updatedAt ?? record.completedAt ?? record.requestedAt),
-    metadata: toMetadata(record.metadata),
+    id: toString(record.id, `citation-${index + 1}`),
+    sourceId: toString(record.sourceId, 'general'),
+    title: toString(record.title, 'Untitled source'),
+    excerpt: toString(record.excerpt, ''),
+    uri: toString(record.uri, '#'),
+    score: toNumber(record.score, 0),
   };
 }
 
-export function normalizeAttempt(
-  value: unknown,
-  taskId: string,
-  index: number,
-  previousProvider: string | null
-): TaskAttempt {
+function normalizeReceipt(value: unknown): PaymentReceipt {
   const record = asRecord(value) ?? {};
-  const provider = toString(record.provider, 'Unknown Provider');
-  const startedAt = toIsoDate(record.startedAt ?? record.requestedAt ?? Date.now());
-  const completedAt = toIsoDate(record.completedAt ?? record.finishedAt ?? startedAt);
-  const fallbackFrom = previousProvider && previousProvider !== provider ? previousProvider : null;
 
   return {
-    id: `${taskId}-attempt-${index + 1}`,
-    taskId,
-    provider,
-    endpoint: toString(record.endpoint, '/unknown'),
+    id: toString(record.id, 'receipt-preview'),
+    amount: toNumber(record.amount, 0),
+    currency: 'USD',
+    settlementRail: toString(record.settlementRail, 'Tempo MPP'),
+    unitLabel: toString(record.unitLabel, 'query'),
+    unitCount: toNumber(record.unitCount, 1),
+    settledAt: toIsoDate(record.settledAt ?? Date.now()),
+  };
+}
+
+export function normalizeQuery(value: unknown, fallbackId?: string): Query {
+  const record = asRecord(value) ?? {};
+
+  return {
+    id: toString(record.id ?? record.queryId, fallbackId ?? 'query-unknown'),
+    question: toString(record.question ?? record.prompt, 'Untitled query'),
+    sourceId: toString(record.sourceId, 'general'),
+    sourceLabel: toString(record.sourceLabel, 'General knowledge base'),
+    mode: toQueryMode(record.mode),
+    priceCeiling: toNumber(record.priceCeiling ?? record.budgetMax, 0.01),
+    status: toQueryStatus(record.status),
+    createdAt: toIsoDate(record.createdAt ?? Date.now()),
+    updatedAt: toIsoDate(record.updatedAt ?? Date.now()),
+    tags: toStringMap(record.tags ?? record.metadata),
+  };
+}
+
+function normalizeAttempt(value: unknown, queryId: string, index: number): QueryAttempt {
+  const record = asRecord(value) ?? {};
+  const startedAt = toIsoDate(record.startedAt ?? Date.now());
+
+  return {
+    id: toString(record.id, `${queryId}-attempt-${index + 1}`),
+    queryId,
+    stage:
+      record.stage === 'retrieve' || record.stage === 'rerank' || record.stage === 'synthesize'
+        ? record.stage
+        : 'retrieve',
+    provider: toString(record.provider, 'Retrieval Engine'),
+    endpoint: toString(record.endpoint, '/query'),
     latencyMs: toNumber(record.latencyMs, 0),
     cost: toNumber(record.cost, 0),
     status: toAttemptStatus(record.status),
-    error: toString(record.error, '') || null,
+    notes: toString(record.notes, '') || null,
     startedAt,
-    completedAt,
-    isFallback: fallbackFrom !== null,
-    fallbackFrom,
+    completedAt: toIsoDate(record.completedAt ?? startedAt),
   };
 }
 
-export function normalizeTaskReport(value: unknown, fallbackId?: string): TaskReport {
+export function normalizeQueryReport(value: unknown, fallbackId?: string): QueryReport {
   const record = asRecord(value) ?? {};
-  const task = normalizeTask(record.task ?? record, fallbackId);
-  const rawAttempts = Array.isArray(record.attempts)
-    ? record.attempts
-    : Array.isArray(record.calls)
-      ? record.calls
-      : [];
-
-  const attempts = rawAttempts.map((attempt, index) =>
-    normalizeAttempt(
-      attempt,
-      task.id,
-      index,
-      index > 0 ? (asRecord(rawAttempts[index - 1])?.provider as string | undefined) ?? null : null
-    )
-  );
-
-  const fallbackCount = attempts.filter((attempt) => attempt.isFallback).length;
-  const averageLatencyMs =
-    attempts.length > 0
-      ? attempts.reduce((sum, attempt) => sum + attempt.latencyMs, 0) / attempts.length
-      : 0;
+  const query = normalizeQuery(record.query ?? record, fallbackId);
+  const rawAttempts = Array.isArray(record.attempts) ? record.attempts : [];
+  const citationsRaw = Array.isArray(record.citations) ? record.citations : [];
 
   return {
-    task,
-    finalStatus: toTaskStatus(record.finalStatus ?? record.status ?? task.status),
-    totalSpent: toNumber(record.totalSpent ?? record.totalCost, attempts.reduce((sum, attempt) => sum + attempt.cost, 0)),
-    remainingBudget: toNumber(record.remainingBudget ?? record.budgetRemaining, task.budgetRemaining),
-    averageLatencyMs,
-    fallbackCount,
-    output: toString(record.output, '') || null,
-    attempts,
+    query,
+    answer: toString(record.answer ?? record.output, '') || null,
+    citations: citationsRaw.map((citation, index) => normalizeCitation(citation, index)),
+    receipt: normalizeReceipt(record.receipt),
+    confidence: toNumber(record.confidence, 0),
+    latencyMs: toNumber(record.latencyMs, 0),
+    queryTerms: Array.isArray(record.queryTerms) ? record.queryTerms.map((term) => toString(term)).filter(Boolean) : [],
+    attempts: rawAttempts.map((attempt, index) => normalizeAttempt(attempt, query.id, index)),
     raw: value,
   };
 }
@@ -188,16 +177,46 @@ export function normalizeProviderHealth(value: unknown): ProviderHealth {
   return {
     provider: toString(record.provider, 'Unknown Provider'),
     successRate: toNumber(record.successRate, 0),
-    p95LatencyMs: toNumber(record.p95LatencyMs ?? record.p95Latency, 0),
+    p95LatencyMs: toNumber(record.p95LatencyMs, 0),
     avgCostPerSuccess: toNumber(record.avgCostPerSuccess, 0),
     lastError: toString(record.lastError, '') || null,
-    circuitBreakerStatus: toCircuitStatus(record.circuitBreakerStatus),
-    lastCheckedAt: toIsoDate(record.lastCheckedAt ?? record.lastChecked),
+    circuitBreakerStatus:
+      record.circuitBreakerStatus === 'healthy' ||
+      record.circuitBreakerStatus === 'warning' ||
+      record.circuitBreakerStatus === 'open'
+        ? record.circuitBreakerStatus
+        : 'healthy',
+    lastCheckedAt: toIsoDate(record.lastCheckedAt ?? Date.now()),
     totalAttempts: toNumber(record.totalAttempts, 0),
     status:
-      toString(record.status) === 'healthy' || toString(record.status) === 'degraded' || toString(record.status) === 'failing'
-        ? (record.status as ProviderHealth['status'])
+      record.status === 'healthy' || record.status === 'degraded' || record.status === 'failing'
+        ? record.status
         : 'healthy',
+  };
+}
+
+function normalizeSource(value: unknown): KnowledgeSource {
+  const record = asRecord(value) ?? {};
+
+  return {
+    id: toString(record.id, 'general'),
+    name: toString(record.name, 'General knowledge base'),
+    description: toString(record.description, ''),
+    documentCount: toNumber(record.documentCount, 0),
+    avgPricePerQuery: toNumber(record.avgPricePerQuery, 0),
+    freshnessNote: toString(record.freshnessNote, 'Updated regularly'),
+    lastIndexedAt: toIsoDate(record.lastIndexedAt ?? Date.now()),
+    topics: Array.isArray(record.topics) ? record.topics.map((topic) => toString(topic)).filter(Boolean) : [],
+  };
+}
+
+function normalizeTrend(value: unknown): SummaryPoint {
+  const record = asRecord(value) ?? {};
+
+  return {
+    label: toString(record.label, 'Now'),
+    revenue: toNumber(record.revenue, 0),
+    queries: toNumber(record.queries, 0),
   };
 }
 
@@ -205,66 +224,48 @@ export function normalizePolicy(value: unknown): Policy {
   const record = asRecord(value) ?? {};
 
   return {
-    defaultBudgetCap: toNumber(record.defaultBudgetCap, 5),
-    maxRetries: toNumber(record.maxRetries ?? record.maxRetriesPerProvider, 2),
-    maxProvidersAttempted: toNumber(record.maxProvidersAttempted, 2),
-    stopLossThreshold: toNumber(record.stopLossThreshold, 0.8),
-    circuitBreakerThreshold: toNumber(record.circuitBreakerThreshold, 4),
+    defaultPriceCeiling: toNumber(record.defaultPriceCeiling, 0.04),
+    deepModeSurcharge: toNumber(record.deepModeSurcharge, 0.012),
+    maxCitationsPerAnswer: toNumber(record.maxCitationsPerAnswer, 5),
+    maxSourcesPerQuery: toNumber(record.maxSourcesPerQuery, 3),
     manualKillSwitch: Boolean(record.manualKillSwitch),
     updatedAt: toIsoDate(record.updatedAt ?? Date.now()),
   };
 }
 
-function normalizeTrend(value: unknown): SummaryPoint {
-  const record = asRecord(value) ?? {};
-  return {
-    label: toString(record.label, 'Now'),
-    spent: toNumber(record.spent, 0),
-    tasks: toNumber(record.tasks, 0),
-  };
-}
-
 export function normalizeSummaryStats(value: unknown): SummaryStats {
   const record = asRecord(value) ?? {};
-  const recentTasksRaw = Array.isArray(record.recentTasks) ? record.recentTasks : [];
-  const providerHealthRaw = Array.isArray(record.providerHealth) ? record.providerHealth : [];
-  const spendTrendRaw = Array.isArray(record.spendTrend) ? record.spendTrend : [];
-  const budgetRecord = asRecord(record.budgetUtilization) ?? {};
 
   return {
-    totalTasksRun: toNumber(record.totalTasksRun, recentTasksRaw.length),
-    successRate: toNumber(record.successRate, 0),
-    totalSpent: toNumber(record.totalSpent, 0),
-    avgCostPerTask: toNumber(record.avgCostPerTask, 0),
+    totalQueries: toNumber(record.totalQueries, 0),
+    answerRate: toNumber(record.answerRate, 0),
+    totalRevenue: toNumber(record.totalRevenue, 0),
+    avgRevenuePerQuery: toNumber(record.avgRevenuePerQuery, 0),
     avgLatencyMs: toNumber(record.avgLatencyMs, 0),
-    fallbackRate: toNumber(record.fallbackRate, 0),
-    recentTasks: recentTasksRaw.map((task) => normalizeTask(task)),
-    providerHealth: providerHealthRaw.map((provider) => normalizeProviderHealth(provider)),
-    budgetUtilization: {
-      spent: toNumber(budgetRecord.spent, 0),
-      cap: toNumber(budgetRecord.cap, 0),
-      remaining: toNumber(budgetRecord.remaining, 0),
-    },
-    spendTrend: spendTrendRaw.map((point) => normalizeTrend(point)),
+    citationCoverageRate: toNumber(record.citationCoverageRate, 0),
+    recentQueries: Array.isArray(record.recentQueries) ? record.recentQueries.map((query) => normalizeQuery(query)) : [],
+    sourceCatalog: Array.isArray(record.sourceCatalog) ? record.sourceCatalog.map((source) => normalizeSource(source)) : [],
+    providerHealth: Array.isArray(record.providerHealth) ? record.providerHealth.map((provider) => normalizeProviderHealth(provider)) : [],
+    revenueTrend: Array.isArray(record.revenueTrend) ? record.revenueTrend.map((point) => normalizeTrend(point)) : [],
   };
 }
 
-export function normalizeTaskCreateResponse(value: unknown): TaskCreateResponse {
+export function normalizeQueryCreateResponse(value: unknown): QueryCreateResponse {
   const record = asRecord(value) ?? {};
-  const task = normalizeTask(record.task ?? record, toString(record.taskId, 'task-created'));
 
   return {
-    task,
-    message: toString(record.message, 'Task created'),
+    query: normalizeQuery(record.query ?? record, toString(record.queryId, 'query-created')),
+    message: toString(record.message, 'Query accepted'),
+    estimatedCharge: toNumber(record.estimatedCharge, 0),
   };
 }
 
-export function sanitizeCreateTaskPayload(payload: CreateTaskPayload): CreateTaskPayload {
+export function sanitizeCreateQueryPayload(payload: CreateQueryPayload): CreateQueryPayload {
   return {
-    prompt: payload.prompt.trim(),
-    budgetMax: Math.max(0.001, payload.budgetMax),
-    providerPolicy: payload.providerPolicy,
-    maxRetries: Math.max(0, payload.maxRetries),
-    ...(payload.metadata ? { metadata: payload.metadata } : {}),
+    question: payload.question.trim(),
+    sourceId: payload.sourceId.trim(),
+    mode: payload.mode,
+    priceCeiling: Math.max(0.005, payload.priceCeiling),
+    ...(payload.tags ? { tags: payload.tags } : {}),
   };
 }

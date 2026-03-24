@@ -1,46 +1,75 @@
-export type TaskStatus = 'queued' | 'running' | 'success' | 'partial' | 'failed';
+export type QueryStatus = 'processing' | 'answered' | 'partial' | 'failed';
 export type AttemptStatus = 'success' | 'failed' | 'timeout';
-export type ProviderPolicy = 'primary-first' | 'cheapest-first' | 'fastest-first';
+export type QueryMode = 'balanced' | 'fast' | 'deep';
 export type CircuitBreakerStatus = 'healthy' | 'warning' | 'open';
 
-export interface Task {
+export interface Query {
   id: string;
-  prompt: string;
-  budgetMax: number;
-  budgetRemaining: number;
-  providerPolicy: ProviderPolicy;
-  maxRetries: number;
-  status: TaskStatus;
+  question: string;
+  sourceId: string;
+  sourceLabel: string;
+  mode: QueryMode;
+  priceCeiling: number;
+  status: QueryStatus;
   createdAt: string;
   updatedAt: string;
-  metadata: Record<string, string>;
+  tags: Record<string, string>;
 }
 
-export interface TaskAttempt {
+export interface Citation {
   id: string;
-  taskId: string;
+  sourceId: string;
+  title: string;
+  excerpt: string;
+  uri: string;
+  score: number;
+}
+
+export interface QueryAttempt {
+  id: string;
+  queryId: string;
+  stage: 'retrieve' | 'rerank' | 'synthesize';
   provider: string;
   endpoint: string;
   latencyMs: number;
   cost: number;
   status: AttemptStatus;
-  error: string | null;
+  notes: string | null;
   startedAt: string;
   completedAt: string;
-  isFallback: boolean;
-  fallbackFrom: string | null;
 }
 
-export interface TaskReport {
-  task: Task;
-  finalStatus: TaskStatus;
-  totalSpent: number;
-  remainingBudget: number;
-  averageLatencyMs: number;
-  fallbackCount: number;
-  output: string | null;
-  attempts: TaskAttempt[];
+export interface PaymentReceipt {
+  id: string;
+  amount: number;
+  currency: 'USD';
+  settlementRail: string;
+  unitLabel: string;
+  unitCount: number;
+  settledAt: string;
+}
+
+export interface QueryReport {
+  query: Query;
+  answer: string | null;
+  citations: Citation[];
+  receipt: PaymentReceipt;
+  confidence: number;
+  latencyMs: number;
+  queryTerms: string[];
+  attempts: QueryAttempt[];
   raw: unknown;
+}
+
+export interface KnowledgeSource {
+  id: string;
+  name: string;
+  description: string;
+  documentCount: number;
+  avgPricePerQuery: number;
+  freshnessNote: string;
+  lastIndexedAt: string;
+  topics: string[];
 }
 
 export interface ProviderHealth {
@@ -56,51 +85,45 @@ export interface ProviderHealth {
 }
 
 export interface Policy {
-  defaultBudgetCap: number;
-  maxRetries: number;
-  maxProvidersAttempted: number;
-  stopLossThreshold: number;
-  circuitBreakerThreshold: number;
+  defaultPriceCeiling: number;
+  deepModeSurcharge: number;
+  maxCitationsPerAnswer: number;
+  maxSourcesPerQuery: number;
   manualKillSwitch: boolean;
   updatedAt: string;
 }
 
 export interface SummaryPoint {
   label: string;
-  spent: number;
-  tasks: number;
-}
-
-export interface BudgetUtilization {
-  spent: number;
-  cap: number;
-  remaining: number;
+  revenue: number;
+  queries: number;
 }
 
 export interface SummaryStats {
-  totalTasksRun: number;
-  successRate: number;
-  totalSpent: number;
-  avgCostPerTask: number;
+  totalQueries: number;
+  answerRate: number;
+  totalRevenue: number;
+  avgRevenuePerQuery: number;
   avgLatencyMs: number;
-  fallbackRate: number;
-  recentTasks: Task[];
+  citationCoverageRate: number;
+  recentQueries: Query[];
+  sourceCatalog: KnowledgeSource[];
   providerHealth: ProviderHealth[];
-  budgetUtilization: BudgetUtilization;
-  spendTrend: SummaryPoint[];
+  revenueTrend: SummaryPoint[];
 }
 
-export interface CreateTaskPayload {
-  prompt: string;
-  budgetMax: number;
-  providerPolicy: ProviderPolicy;
-  maxRetries: number;
-  metadata?: Record<string, string>;
+export interface CreateQueryPayload {
+  question: string;
+  sourceId: string;
+  mode: QueryMode;
+  priceCeiling: number;
+  tags?: Record<string, string>;
 }
 
-export interface TaskCreateResponse {
-  task: Task;
+export interface QueryCreateResponse {
+  query: Query;
   message: string;
+  estimatedCharge: number;
 }
 
 export interface ApiErrorPayload {

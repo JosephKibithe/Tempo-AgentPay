@@ -4,39 +4,42 @@ import {
   mockCreateResponse,
   mockPolicy,
   mockProviderHealth,
+  mockQuery,
+  mockQueryReport,
+  mockSources,
   mockSummaryStats,
-  mockTask,
-  mockTaskReport,
 } from '@/lib/mock-data';
 import {
   normalizePolicy,
   normalizeProviderHealth,
+  normalizeQuery,
+  normalizeQueryCreateResponse,
+  normalizeQueryReport,
   normalizeSummaryStats,
-  normalizeTask,
-  normalizeTaskCreateResponse,
-  normalizeTaskReport,
 } from '@/lib/agentpay';
 import type {
   ApiErrorPayload,
+  CreateQueryPayload,
+  KnowledgeSource,
   Policy,
   ProviderHealth,
+  Query,
+  QueryCreateResponse,
+  QueryReport,
   SummaryStats,
-  Task,
-  TaskCreateResponse,
-  TaskReport,
 } from '@/lib/types';
+import {
+  createQuery,
+  getPolicy,
+  getProviderHealth,
+  getQuery,
+  getQueryReport,
+  getSummary,
+  listKnowledgeSources,
+  updatePolicy,
+} from '@/lib/server/knowledge-base';
 
 type HttpMethod = 'GET' | 'POST' | 'PATCH';
-type MockKey = 'task' | 'taskReport' | 'policy' | 'providers' | 'summary' | 'createTask';
-
-const mockMap: Record<MockKey, unknown> = {
-  task: mockTask,
-  taskReport: mockTaskReport,
-  policy: mockPolicy,
-  providers: mockProviderHealth,
-  summary: mockSummaryStats,
-  createTask: mockCreateResponse,
-};
 
 function backendBase(): string | null {
   const value = process.env.AGENTPAY_API_BASE;
@@ -45,6 +48,14 @@ function backendBase(): string | null {
 
 function useMocks(): boolean {
   return process.env.AGENTPAY_ENABLE_MOCKS === 'true';
+}
+
+function useLocalEngine(): boolean {
+  return useMocks() || !backendBase();
+}
+
+function allowLocalFallback(): boolean {
+  return process.env.AGENTPAY_FALLBACK_TO_LOCAL !== 'false';
 }
 
 function errorResponse(error: string, details?: string, status = 502, mock = false) {
@@ -88,91 +99,144 @@ async function requestBackend(path: string, method: HttpMethod, body?: unknown):
   }
 }
 
-export async function proxyTaskCreate(body: unknown) {
+export async function proxyQueryCreate(body: unknown) {
   try {
-    const payload = typeof body === 'object' && body !== null ? (body as Record<string, unknown>) : {};
-    const data = useMocks()
-      ? {
-          ...(mockMap.createTask as Record<string, unknown>),
-          task: {
-            ...((mockCreateResponse.task as unknown as Record<string, unknown>) ?? {}),
-            prompt: typeof payload.prompt === 'string' ? payload.prompt : mockCreateResponse.task.prompt,
-            budgetMax:
-              typeof payload.budgetMax === 'number' ? payload.budgetMax : mockCreateResponse.task.budgetMax,
-            providerPolicy:
-              typeof payload.providerPolicy === 'string'
-                ? payload.providerPolicy
-                : mockCreateResponse.task.providerPolicy,
-            maxRetries:
-              typeof payload.maxRetries === 'number' ? payload.maxRetries : mockCreateResponse.task.maxRetries,
-            metadata:
-              typeof payload.metadata === 'object' && payload.metadata !== null
-                ? payload.metadata
-                : mockCreateResponse.task.metadata,
-          },
-        }
-      : await requestBackend('/tasks', 'POST', body);
-    return NextResponse.json(normalizeTaskCreateResponse(data));
+    if (useLocalEngine()) {
+      const payload = typeof body === 'object' && body !== null ? (body as CreateQueryPayload) : ({} as CreateQueryPayload);
+      const data = useMocks() ? mockCreateResponse : await createQuery(payload);
+      return NextResponse.json(normalizeQueryCreateResponse(data) satisfies QueryCreateResponse);
+    }
+
+    try {
+      const data = await requestBackend('/queries', 'POST', body);
+      return NextResponse.json(normalizeQueryCreateResponse(data) satisfies QueryCreateResponse);
+    } catch (error) {
+      if (!allowLocalFallback()) throw error;
+      const payload = typeof body === 'object' && body !== null ? (body as CreateQueryPayload) : ({} as CreateQueryPayload);
+      const data = await createQuery(payload);
+      return NextResponse.json(normalizeQueryCreateResponse(data) satisfies QueryCreateResponse);
+    }
   } catch (error) {
-    return errorResponse('Unable to create task', error instanceof Error ? error.message : String(error), 502, useMocks());
+    return errorResponse('Unable to process paid query', error instanceof Error ? error.message : String(error), 502, useMocks());
   }
 }
 
-export async function proxyTask(taskId: string) {
+export async function proxyQuery(queryId: string) {
   try {
-    const data = useMocks() ? mockMap.task : await requestBackend(`/tasks/${taskId}`, 'GET');
-    return NextResponse.json(normalizeTask(data, taskId));
+    const data = useLocalEngine()
+      ? useMocks()
+        ? mockQuery
+        : getQuery(queryId)
+      : await requestBackend(`/queries/${queryId}`, 'GET').catch((error) => {
+          if (!allowLocalFallback()) throw error;
+          return getQuery(queryId);
+        });
+    return NextResponse.json(normalizeQuery(data, queryId) satisfies Query);
   } catch (error) {
-    return errorResponse('Unable to fetch task status', error instanceof Error ? error.message : String(error), 502, useMocks());
+    return errorResponse('Unable to fetch query status', error instanceof Error ? error.message : String(error), 404, useMocks());
   }
 }
 
-export async function proxyTaskReport(taskId: string) {
+export async function proxyQueryReport(queryId: string) {
   try {
-    const data = useMocks() ? mockMap.taskReport : await requestBackend(`/tasks/${taskId}/report`, 'GET');
-    return NextResponse.json(normalizeTaskReport(data, taskId));
+    const data = useLocalEngine()
+      ? useMocks()
+        ? mockQueryReport
+        : getQueryReport(queryId)
+      : await requestBackend(`/queries/${queryId}/report`, 'GET').catch((error) => {
+          if (!allowLocalFallback()) throw error;
+          return getQueryReport(queryId);
+        });
+    return NextResponse.json(normalizeQueryReport(data, queryId) satisfies QueryReport);
   } catch (error) {
-    return errorResponse('Unable to fetch task report', error instanceof Error ? error.message : String(error), 502, useMocks());
+    return errorResponse('Unable to fetch query receipt', error instanceof Error ? error.message : String(error), 404, useMocks());
+  }
+}
+
+export async function proxySources() {
+  try {
+    const data = useLocalEngine()
+      ? useMocks()
+        ? mockSources
+        : listKnowledgeSources()
+      : await requestBackend('/sources', 'GET').catch((error) => {
+          if (!allowLocalFallback()) throw error;
+          return listKnowledgeSources();
+        });
+    const list = Array.isArray(data) ? data : [];
+    return NextResponse.json(list satisfies KnowledgeSource[]);
+  } catch (error) {
+    return errorResponse('Unable to fetch source catalog', error instanceof Error ? error.message : String(error), 502, useMocks());
   }
 }
 
 export async function proxyProviderHealth() {
   try {
-    const data = useMocks() ? mockMap.providers : await requestBackend('/providers/health', 'GET');
+    const data = useLocalEngine()
+      ? useMocks()
+        ? mockProviderHealth
+        : getProviderHealth()
+      : await requestBackend('/providers/health', 'GET').catch((error) => {
+          if (!allowLocalFallback()) throw error;
+          return getProviderHealth();
+        });
     const list = Array.isArray(data) ? data.map((item) => normalizeProviderHealth(item)) : [];
     return NextResponse.json(list satisfies ProviderHealth[]);
   } catch (error) {
-    return errorResponse('Unable to fetch provider health', error instanceof Error ? error.message : String(error), 502, useMocks());
+    return errorResponse('Unable to fetch retrieval health', error instanceof Error ? error.message : String(error), 502, useMocks());
   }
 }
 
 export async function proxyPolicyUpdate(body?: unknown) {
   try {
-    const patch =
-      typeof body === 'object' && body !== null ? (body as Record<string, unknown>) : {};
-    const data = useMocks()
-      ? { ...(mockMap.policy as Record<string, unknown>), ...patch, updatedAt: new Date().toISOString() }
-      : await requestBackend('/policy', 'PATCH', body);
+    const patch = typeof body === 'object' && body !== null ? (body as Partial<Policy>) : {};
+    const data = useLocalEngine()
+      ? useMocks()
+        ? { ...mockPolicy, ...patch, updatedAt: new Date().toISOString() }
+        : updatePolicy(patch)
+      : await requestBackend('/policy', 'PATCH', body).catch((error) => {
+          if (!allowLocalFallback()) throw error;
+          return updatePolicy(patch);
+        });
     return NextResponse.json(normalizePolicy(data) satisfies Policy);
   } catch (error) {
-    return errorResponse('Unable to update policy', error instanceof Error ? error.message : String(error), 502, useMocks());
+    return errorResponse('Unable to update pricing policy', error instanceof Error ? error.message : String(error), 502, useMocks());
   }
 }
 
 export async function proxyPolicy() {
   try {
-    const data = useMocks() ? mockMap.policy : await requestBackend('/policy', 'GET');
+    const data = useLocalEngine()
+      ? useMocks()
+        ? mockPolicy
+        : getPolicy()
+      : await requestBackend('/policy', 'GET').catch((error) => {
+          if (!allowLocalFallback()) throw error;
+          return getPolicy();
+        });
     return NextResponse.json(normalizePolicy(data) satisfies Policy);
   } catch (error) {
-    return errorResponse('Unable to fetch policy', error instanceof Error ? error.message : String(error), 502, useMocks());
+    return errorResponse('Unable to fetch pricing policy', error instanceof Error ? error.message : String(error), 502, useMocks());
   }
 }
 
 export async function proxySummary() {
   try {
-    const data = useMocks() ? mockMap.summary : await requestBackend('/stats/summary', 'GET');
+    const data = useLocalEngine()
+      ? useMocks()
+        ? mockSummaryStats
+        : getSummary()
+      : await requestBackend('/stats/summary', 'GET').catch((error) => {
+          if (!allowLocalFallback()) throw error;
+          return getSummary();
+        });
     return NextResponse.json(normalizeSummaryStats(data) satisfies SummaryStats);
   } catch (error) {
-    return errorResponse('Unable to fetch dashboard summary', error instanceof Error ? error.message : String(error), 502, useMocks());
+    return errorResponse('Unable to fetch query commerce summary', error instanceof Error ? error.message : String(error), 502, useMocks());
   }
 }
+
+// Backward-compatible exports for the old task-shaped routes.
+export const proxyTaskCreate = proxyQueryCreate;
+export const proxyTask = proxyQuery;
+export const proxyTaskReport = proxyQueryReport;

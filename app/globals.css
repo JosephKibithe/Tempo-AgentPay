@@ -4,8 +4,17 @@
 
 :root {
   color-scheme: dark;
-  --font-space: "Geist Mono", "SFMono-Regular", "Consolas", monospace;
-  --font-mono: "Geist Mono", "SFMono-Regular", "Consolas", monospace;
+  --font-display: "Geist Pixel Square", "Geist Mono", ui-monospace, monospace;
+  --font-sans: "Geist Pixel Square", "Geist Mono", ui-monospace, monospace;
+  --font-mono: "Geist Pixel Square", "Geist Mono", ui-monospace, monospace;
+  --base-white: #fff;
+  --base-black: #000;
+  --accent: #00e100;
+  --frontier: #f6fff6;
+  --panel-black: rgba(0, 0, 0, 0.5);
+  --panel-black-strong: rgba(0, 0, 0, 0.78);
+  --panel-stroke: rgba(255, 255, 255, 0.12);
+  --panel-stroke-strong: rgba(255, 255, 255, 0.18);
 }
 
 html,
@@ -13,9 +22,17 @@ body {
   min-height: 100%;
 }
 
+html {
+  background: #000;
+}
+
 body {
-  @apply bg-bg text-ink antialiased;
-  font-family: var(--font-space);
+  @apply text-ink antialiased;
+  font-family: var(--font-sans);
+  background:
+    radial-gradient(circle at top center, rgba(255, 255, 255, 0.06), transparent 22%),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.02), transparent 28%),
+    #000;
   letter-spacing: -0.01em;
 }
 
@@ -33,30 +50,43 @@ a {
   color: #000000;
 }
 
-.wf-card {
+.wf-noise {
+  background:
+    radial-gradient(circle at top left, rgba(255, 255, 255, 0.05), transparent 16%),
+    radial-gradient(circle at top right, rgba(255, 255, 255, 0.03), transparent 14%),
+    #000;
+}
+
+.wf-card,
+.wireframe-card {
   position: relative;
   overflow: hidden;
   backdrop-filter: blur(10px);
-  background: rgba(0, 0, 0, 0.78);
+  background: var(--panel-black);
+  border: 1px solid var(--panel-stroke);
 }
 
 .wf-card::before,
-.wf-card::after {
+.wf-card::after,
+.wireframe-card::before,
+.wireframe-card::after {
   content: "";
   position: absolute;
-  width: 10px;
-  height: 10px;
-  border-color: rgba(255, 255, 255, 0.26);
+  width: 8px;
+  height: 8px;
+  border-color: rgba(255, 255, 255, 0.24);
   border-style: solid;
 }
 
-.wf-card::before {
+.wf-card::before,
+.wireframe-card::before {
   top: -1px;
   left: -1px;
   border-width: 1px 0 0 1px;
 }
 
-.wf-card::after {
+.wf-card::after,
+.wireframe-card::after {
   right: -1px;
   bottom: -1px;
   border-width: 0 1px 1px 0;
@@ -65,9 +95,10 @@ a {
 .wf-label {
   font-family: var(--font-mono);
   font-size: 11px;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.15em;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.68);
+  color: rgba(255, 255, 255, 0.7);
+  line-height: 1.2;
 }
 
 .wf-divider {
@@ -75,9 +106,56 @@ a {
   border-style: dashed;
 }
 
-.wf-noise {
+.wireframe-grid {
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  z-index: 0;
+}
+
+.wireframe-grid::before {
+  content: "";
+  position: absolute;
+  inset: 0;
   background-image:
-    linear-gradient(rgba(255, 255, 255, 0.025), rgba(255, 255, 255, 0.025)),
-    radial-gradient(circle at top left, rgba(0, 225, 0, 0.11), transparent 22%),
-    radial-gradient(circle at top right, rgba(81, 162, 255, 0.1), transparent 20%);
+    linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: 60px 60px;
+  opacity: 0.32;
+}
+
+.wf-terminal {
+  backdrop-filter: blur(12px);
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.wf-terminal-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.wf-terminal-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 9999px;
+}
+
+.wf-terminal-dot--red {
+  background: #ff5f57;
+}
+
+.wf-terminal-dot--yellow {
+  background: #febc2e;
+}
+
+.wf-terminal-dot--green {
+  background: #28c840;
 }

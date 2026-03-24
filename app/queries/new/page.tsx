@@ -1,10 +1,10 @@
-import { TaskRunnerForm } from '@/components/task-runner-form';
+import { KnowledgeQueryForm } from '@/components/task-runner-form';
 import { PageShell } from '@/components/ui';
 
-export default function NewTaskPage() {
+export default function NewQueryPage() {
   return (
     <PageShell eyebrow="Knowledge Base" title="Run A Paid Query">
-      <TaskRunnerForm />
+      <KnowledgeQueryForm />
     </PageShell>
   );
 }

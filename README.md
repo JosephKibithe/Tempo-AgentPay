@@ -1,6 +1,8 @@
-# TempoAgentPay
+# Tempo Query Commerce
 
-TempoAgentPay is a production-style demo dashboard and adapter layer for a budget-safe paid-agent runtime. It pairs the existing TypeScript backend modules in [`src/`](./src) with a Next.js App Router frontend for task execution, ledger inspection, provider health, and policy control.
+Tempo Query Commerce is a pay-per-query knowledge base demo built on Next.js. It packages a customer-facing query flow, receipt detail pages, source collection browsing, pricing controls, and retrieval telemetry into one product-shaped app.
+
+The repo still keeps the original TypeScript AgentPay runtime in [`src/`](./src), but the main app is now a monetizable vertical slice: ask a grounded question against a source collection, meter the answer, and show the receipt with citations.
 
 ## Stack
 
@@ -9,29 +11,39 @@ TempoAgentPay is a production-style demo dashboard and adapter layer for a budge
 - Tailwind CSS
 - SWR
 - Recharts
-- Existing AgentPay backend modules under [`src/`](./src)
+- Local knowledge-base engine for demo mode under [`lib/server/`](./lib/server)
+- Existing AgentPay runtime under [`src/`](./src)
 
-## Features
+## Product Features
 
-- Dashboard home with summary cards, recent runs, provider health, and budget utilization
-- Task Runner form for creating new budget-capped tasks
-- Task detail page with itemized attempt timeline and fallback markers
-- Provider health page with sorting and status filtering
-- Policy control page with editable runtime settings
-- Next API routes that proxy to the AgentPay backend
-- Mock payload mode for local demo without a live backend
+- Dashboard with paid-query volume, answer rate, revenue, citation coverage, and latency
+- Query form for asking a paid question against a chosen source collection
+- Receipt/detail page with answer, citations, pipeline trace, and settlement metadata
+- Source collection catalog exposed through the dashboard and `/api/sources`
+- Retrieval health page with provider latency, cost, and success metrics
+- Pricing policy page for query ceilings, citation limits, and kill-switch control
+- Backward-compatible task-shaped routes plus new query-shaped routes
 
-## API Adapter Routes
+## API Routes
 
-- `POST /api/tasks`
-- `GET /api/tasks/:id`
-- `GET /api/tasks/:id/report`
+Primary routes:
+
+- `POST /api/queries`
+- `GET /api/queries/:id`
+- `GET /api/queries/:id/report`
+- `GET /api/sources`
 - `GET /api/providers/health`
 - `GET /api/policy`
 - `PATCH /api/policy`
 - `GET /api/stats/summary`
 
-All adapter routes point at `AGENTPAY_API_BASE`.
+Compatibility routes:
+
+- `POST /api/tasks`
+- `GET /api/tasks/:id`
+- `GET /api/tasks/:id/report`
+
+When `AGENTPAY_ENABLE_MOCKS=true`, the app serves seeded demo data locally. When `AGENTPAY_API_BASE` is set and mock mode is disabled, the proxy layer can forward to an external backend.
 
 ## Environment
 
@@ -43,7 +55,7 @@ AGENTPAY_ENABLE_MOCKS=false
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 ```
 
-If you want the dashboard to run without a backend, set:
+For the built-in local knowledge-base demo, either leave `AGENTPAY_API_BASE` unset or enable mocks:
 
 ```bash
 AGENTPAY_ENABLE_MOCKS=true
@@ -73,22 +85,10 @@ npm run demo:backend
 ## Project Structure
 
 - [`app/`](./app): Next.js pages and API routes
-- [`components/`](./components): dashboard UI, forms, tables, and shared view components
-- [`lib/`](./lib): typed models, normalizers, API helpers, mock data, and proxy utilities
-- [`mock-data/`](./mock-data): sample payloads for each adapter endpoint
-- [`docs/demo-script.md`](./docs/demo-script.md): short presentation script
-- [`src/`](./src): existing AgentPay backend runtime and tests
-
-## Mock Payload Samples
-
-Sample endpoint payloads are included here:
-
-- [`tasks.create.json`](./mock-data/tasks.create.json)
-- [`tasks.status.json`](./mock-data/tasks.status.json)
-- [`tasks.report.json`](./mock-data/tasks.report.json)
-- [`providers.health.json`](./mock-data/providers.health.json)
-- [`policy.json`](./mock-data/policy.json)
-- [`stats.summary.json`](./mock-data/stats.summary.json)
+- [`components/`](./components): dashboard UI, query flow, receipt views, and control forms
+- [`lib/`](./lib): typed models, normalizers, mock data, API helpers, and server-side query engine
+- [`docs/demo-script.md`](./docs/demo-script.md): short walkthrough for showing the product
+- [`src/`](./src): original AgentPay backend runtime and tests
 
 ## Validation
 
@@ -100,6 +100,6 @@ The repo currently passes:
 
 ## Notes
 
-- The dashboard handles backend failures gracefully and will show retryable error states instead of crashing pages.
-- The API layer normalizes partial backend payloads into strict frontend interfaces.
-- The original backend runtime remains intact and can still be exercised through [`src/index.ts`](./src/index.ts).
+- The product now works without an external backend by using the local query engine in [`lib/server/knowledge-base.ts`](./lib/server/knowledge-base.ts).
+- The proxy layer stays in place so the app can still front a separate backend later.
+- The original AgentPay runtime remains intact and can still be exercised through [`src/index.ts`](./src/index.ts).
