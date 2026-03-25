@@ -3,6 +3,7 @@
 import type { PropsWithChildren } from 'react';
 
 import { NavItem } from '@/components/ui';
+import { WorkspaceSwitcher } from '@/components/workspace-switcher';
 
 export function AppShell({ children }: PropsWithChildren) {
   return (
@@ -21,12 +22,14 @@ export function AppShell({ children }: PropsWithChildren) {
                 <p className="wf-label">Mode</p>
                 <p className="mt-2 text-sm text-ink">Public pay-per-query API with Tempo-native receipts</p>
               </div>
+              <WorkspaceSwitcher />
             </div>
           </div>
           <nav className="flex flex-wrap gap-2 px-6 pb-6 md:flex-col">
             <NavItem href="/" label="Dashboard" />
             <NavItem href="/queries/new" label="Ask KB" />
             <NavItem href="/sources" label="Sources" />
+            <NavItem href="/workspaces" label="Workspaces" />
             <NavItem href="/providers" label="Retrieval Health" />
             <NavItem href="/policy" label="Pricing Policy" />
           </nav>

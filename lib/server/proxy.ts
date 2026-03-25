@@ -10,6 +10,8 @@ import {
   mockSummaryStats,
 } from '@/lib/mock-data';
 import {
+  normalizeWorkspace,
+  normalizeWorkspaceMutationResponse,
   normalizePolicy,
   normalizeProviderHealth,
   normalizeQuery,
@@ -21,6 +23,7 @@ import type {
   ApiErrorPayload,
   CreateKnowledgeSourcePayload,
   CreateQueryPayload,
+  CreateWorkspacePayload,
   IngestKnowledgeDocumentsPayload,
   KnowledgeSource,
   Policy,
@@ -30,17 +33,23 @@ import type {
   QueryReport,
   SourceMutationResponse,
   SummaryStats,
+  Workspace,
+  WorkspaceMutationResponse,
 } from '@/lib/types';
 import {
   createKnowledgeSource,
   createQuery,
+  createWorkspace,
   getPolicy,
   getProviderHealth,
   getQuery,
   getQueryReport,
+  getWorkspaceByApiKey,
   getSummary,
   ingestKnowledgeDocuments,
   listKnowledgeSources,
+  listKnowledgeSourcesForWorkspace,
+  listWorkspaces,
   updatePolicy,
 } from '@/lib/server/knowledge-base';
 
@@ -61,6 +70,15 @@ function useLocalEngine(): boolean {
 
 function allowLocalFallback(): boolean {
   return process.env.AGENTPAY_FALLBACK_TO_LOCAL !== 'false';
+}
+
+function workspaceApiKey(headers?: Headers): string | undefined {
+  const value = headers?.get('x-agentpay-workspace-key')?.trim();
+  return value ? value : undefined;
+}
+
+function workspaceIdFromHeaders(headers?: Headers): string {
+  return getWorkspaceByApiKey(workspaceApiKey(headers)).id;
 }
 
 function errorResponse(error: string, details?: string, status = 502, mock = false) {
@@ -104,11 +122,11 @@ async function requestBackend(path: string, method: HttpMethod, body?: unknown):
   }
 }
 
-export async function proxyQueryCreate(body: unknown) {
+export async function proxyQueryCreate(body: unknown, headers?: Headers) {
   try {
     if (useLocalEngine()) {
       const payload = typeof body === 'object' && body !== null ? (body as CreateQueryPayload) : ({} as CreateQueryPayload);
-      const data = useMocks() ? mockCreateResponse : await createQuery(payload);
+      const data = useMocks() ? mockCreateResponse : await createQuery(payload, workspaceIdFromHeaders(headers));
       return NextResponse.json(normalizeQueryCreateResponse(data) satisfies QueryCreateResponse);
     }
 
@@ -118,7 +136,7 @@ export async function proxyQueryCreate(body: unknown) {
     } catch (error) {
       if (!allowLocalFallback()) throw error;
       const payload = typeof body === 'object' && body !== null ? (body as CreateQueryPayload) : ({} as CreateQueryPayload);
-      const data = await createQuery(payload);
+      const data = await createQuery(payload, workspaceIdFromHeaders(headers));
       return NextResponse.json(normalizeQueryCreateResponse(data) satisfies QueryCreateResponse);
     }
   } catch (error) {
@@ -126,15 +144,15 @@ export async function proxyQueryCreate(body: unknown) {
   }
 }
 
-export async function proxyQuery(queryId: string) {
+export async function proxyQuery(queryId: string, headers?: Headers) {
   try {
     const data = useLocalEngine()
       ? useMocks()
         ? mockQuery
-        : getQuery(queryId)
+        : getQuery(queryId, workspaceIdFromHeaders(headers))
       : await requestBackend(`/queries/${queryId}`, 'GET').catch((error) => {
           if (!allowLocalFallback()) throw error;
-          return getQuery(queryId);
+          return getQuery(queryId, workspaceIdFromHeaders(headers));
         });
     return NextResponse.json(normalizeQuery(data, queryId) satisfies Query);
   } catch (error) {
@@ -142,15 +160,15 @@ export async function proxyQuery(queryId: string) {
   }
 }
 
-export async function proxyQueryReport(queryId: string) {
+export async function proxyQueryReport(queryId: string, headers?: Headers) {
   try {
     const data = useLocalEngine()
       ? useMocks()
         ? mockQueryReport
-        : getQueryReport(queryId)
+        : getQueryReport(queryId, workspaceIdFromHeaders(headers))
       : await requestBackend(`/queries/${queryId}/report`, 'GET').catch((error) => {
           if (!allowLocalFallback()) throw error;
-          return getQueryReport(queryId);
+          return getQueryReport(queryId, workspaceIdFromHeaders(headers));
         });
     return NextResponse.json(normalizeQueryReport(data, queryId) satisfies QueryReport);
   } catch (error) {
@@ -158,15 +176,15 @@ export async function proxyQueryReport(queryId: string) {
   }
 }
 
-export async function proxySources() {
+export async function proxySources(headers?: Headers) {
   try {
     const data = useLocalEngine()
       ? useMocks()
         ? mockSources
-        : listKnowledgeSources()
+        : listKnowledgeSourcesForWorkspace(workspaceIdFromHeaders(headers))
       : await requestBackend('/sources', 'GET').catch((error) => {
           if (!allowLocalFallback()) throw error;
-          return listKnowledgeSources();
+          return listKnowledgeSourcesForWorkspace(workspaceIdFromHeaders(headers));
         });
     const list = Array.isArray(data) ? data : [];
     return NextResponse.json(list satisfies KnowledgeSource[]);
@@ -175,21 +193,21 @@ export async function proxySources() {
   }
 }
 
-export async function proxySourceCreate(body: unknown) {
+export async function proxySourceCreate(body: unknown, headers?: Headers) {
   try {
     const payload = typeof body === 'object' && body !== null ? (body as CreateKnowledgeSourcePayload) : ({} as CreateKnowledgeSourcePayload);
-    const data = createKnowledgeSource(payload);
+    const data = createKnowledgeSource(payload, workspaceIdFromHeaders(headers));
     return NextResponse.json(data satisfies SourceMutationResponse, { status: 201 });
   } catch (error) {
     return errorResponse('Unable to create source collection', error instanceof Error ? error.message : String(error), 400, useMocks());
   }
 }
 
-export async function proxySourceDocumentIngest(sourceId: string, body: unknown) {
+export async function proxySourceDocumentIngest(sourceId: string, body: unknown, headers?: Headers) {
   try {
     const payload =
       typeof body === 'object' && body !== null ? (body as IngestKnowledgeDocumentsPayload) : ({ documents: [] } as IngestKnowledgeDocumentsPayload);
-    const data = ingestKnowledgeDocuments(sourceId, payload);
+    const data = ingestKnowledgeDocuments(sourceId, payload, workspaceIdFromHeaders(headers));
     return NextResponse.json(data satisfies SourceMutationResponse, { status: 201 });
   } catch (error) {
     return errorResponse('Unable to ingest source documents', error instanceof Error ? error.message : String(error), 400, useMocks());
@@ -259,6 +277,42 @@ export async function proxySummary() {
     return NextResponse.json(normalizeSummaryStats(data) satisfies SummaryStats);
   } catch (error) {
     return errorResponse('Unable to fetch query commerce summary', error instanceof Error ? error.message : String(error), 502, useMocks());
+  }
+}
+
+export async function proxySummaryForWorkspace(headers?: Headers) {
+  try {
+    const workspaceId = workspaceIdFromHeaders(headers);
+    const data = useLocalEngine()
+      ? useMocks()
+        ? mockSummaryStats
+        : getSummary(workspaceId)
+      : await requestBackend('/stats/summary', 'GET').catch((error) => {
+          if (!allowLocalFallback()) throw error;
+          return getSummary(workspaceId);
+        });
+    return NextResponse.json(normalizeSummaryStats(data) satisfies SummaryStats);
+  } catch (error) {
+    return errorResponse('Unable to fetch query commerce summary', error instanceof Error ? error.message : String(error), 502, useMocks());
+  }
+}
+
+export async function proxyWorkspaces() {
+  try {
+    const data = listWorkspaces().map((workspace) => normalizeWorkspace(workspace));
+    return NextResponse.json(data satisfies Workspace[]);
+  } catch (error) {
+    return errorResponse('Unable to fetch workspaces', error instanceof Error ? error.message : String(error), 502, useMocks());
+  }
+}
+
+export async function proxyWorkspaceCreate(body: unknown) {
+  try {
+    const payload = typeof body === 'object' && body !== null ? (body as CreateWorkspacePayload) : ({} as CreateWorkspacePayload);
+    const data = createWorkspace(payload);
+    return NextResponse.json(normalizeWorkspaceMutationResponse(data) satisfies WorkspaceMutationResponse, { status: 201 });
+  } catch (error) {
+    return errorResponse('Unable to create workspace', error instanceof Error ? error.message : String(error), 400, useMocks());
   }
 }
 

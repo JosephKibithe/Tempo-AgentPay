@@ -6,6 +6,7 @@ export type CircuitBreakerStatus = 'healthy' | 'warning' | 'open';
 export interface Query {
   id: string;
   question: string;
+  workspaceId: string;
   sourceId: string;
   sourceLabel: string;
   mode: QueryMode;
@@ -63,6 +64,7 @@ export interface QueryReport {
 
 export interface KnowledgeSource {
   id: string;
+  workspaceId: string;
   name: string;
   description: string;
   documentCount: number;
@@ -85,6 +87,26 @@ export interface CreateKnowledgeSourcePayload {
   avgPricePerQuery?: number;
   freshnessNote?: string;
   topics?: string[];
+}
+
+export interface Workspace {
+  id: string;
+  name: string;
+  slug: string;
+  apiKey: string;
+  createdAt: string;
+  sourceCount: number;
+  queryCount: number;
+  totalRevenue: number;
+}
+
+export interface CreateWorkspacePayload {
+  name: string;
+}
+
+export interface WorkspaceMutationResponse {
+  workspace: Workspace;
+  message: string;
 }
 
 export interface IngestKnowledgeDocumentsPayload {

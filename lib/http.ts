@@ -12,12 +12,28 @@ export class ApiClientError extends Error {
   }
 }
 
+function workspaceHeaders(headers?: HeadersInit): HeadersInit {
+  if (typeof window === 'undefined') {
+    return headers ?? {};
+  }
+
+  const workspaceKey = window.localStorage.getItem('agentpay.workspaceKey');
+  if (!workspaceKey) {
+    return headers ?? {};
+  }
+
+  return {
+    ...(headers ?? {}),
+    'x-agentpay-workspace-key': workspaceKey,
+  };
+}
+
 export async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
     ...init,
     headers: {
       'Content-Type': 'application/json',
-      ...(init?.headers ?? {}),
+      ...workspaceHeaders(init?.headers),
     },
   });
 

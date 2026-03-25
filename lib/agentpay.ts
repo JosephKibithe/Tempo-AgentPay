@@ -13,6 +13,8 @@ import type {
   QueryStatus,
   SummaryPoint,
   SummaryStats,
+  Workspace,
+  WorkspaceMutationResponse,
 } from '@/lib/types';
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -119,6 +121,7 @@ export function normalizeQuery(value: unknown, fallbackId?: string): Query {
   return {
     id: toString(record.id ?? record.queryId, fallbackId ?? 'query-unknown'),
     question: toString(record.question ?? record.prompt, 'Untitled query'),
+    workspaceId: toString(record.workspaceId, 'demo'),
     sourceId: toString(record.sourceId, 'general'),
     sourceLabel: toString(record.sourceLabel, 'General knowledge base'),
     mode: toQueryMode(record.mode),
@@ -200,6 +203,7 @@ function normalizeSource(value: unknown): KnowledgeSource {
 
   return {
     id: toString(record.id, 'general'),
+    workspaceId: toString(record.workspaceId, 'demo'),
     name: toString(record.name, 'General knowledge base'),
     description: toString(record.description, ''),
     documentCount: toNumber(record.documentCount, 0),
@@ -257,6 +261,30 @@ export function normalizeQueryCreateResponse(value: unknown): QueryCreateRespons
     query: normalizeQuery(record.query ?? record, toString(record.queryId, 'query-created')),
     message: toString(record.message, 'Query accepted'),
     estimatedCharge: toNumber(record.estimatedCharge, 0),
+  };
+}
+
+export function normalizeWorkspace(value: unknown): Workspace {
+  const record = asRecord(value) ?? {};
+
+  return {
+    id: toString(record.id, 'workspace-demo'),
+    name: toString(record.name, 'Demo Workspace'),
+    slug: toString(record.slug, 'demo'),
+    apiKey: toString(record.apiKey, ''),
+    createdAt: toIsoDate(record.createdAt ?? Date.now()),
+    sourceCount: toNumber(record.sourceCount, 0),
+    queryCount: toNumber(record.queryCount, 0),
+    totalRevenue: toNumber(record.totalRevenue, 0),
+  };
+}
+
+export function normalizeWorkspaceMutationResponse(value: unknown): WorkspaceMutationResponse {
+  const record = asRecord(value) ?? {};
+
+  return {
+    workspace: normalizeWorkspace(record.workspace),
+    message: toString(record.message, 'Workspace updated'),
   };
 }
 

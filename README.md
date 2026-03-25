@@ -4,6 +4,8 @@ Tempo Query Commerce is a pay-per-query knowledge base demo built on Next.js. It
 
 The strongest product story is simple: machine-buyable knowledge with no API keys and no accounts. Pay for one grounded answer, get citations and a receipt, and move on.
 
+The current app now also has a production-shaped boundary for teams: workspaces own sources, queries, and API keys. That gives contributors a real tenant model to build on before swapping the local store for Postgres.
+
 The repo still keeps the original TypeScript AgentPay runtime in [`src/`](./src), but the main app is now a monetizable vertical slice: ask a grounded question against a source collection, meter the answer, and show the receipt with citations.
 
 ## Stack
@@ -20,6 +22,7 @@ The repo still keeps the original TypeScript AgentPay runtime in [`src/`](./src)
 
 - Public API-first query surface at `POST /api/v1/query`
 - Receipt lookup flow at `GET /api/v1/query/:id/report`
+- Workspace creation and API-key-based tenant isolation
 - Persistent source creation and document ingestion through the app UI and API
 - Dashboard with paid-query volume, answer rate, revenue, citation coverage, and latency
 - Query form for asking a paid question against a chosen source collection
@@ -36,12 +39,16 @@ Primary routes:
 - `POST /api/v1/query`
 - `GET /api/v1/query/:id`
 - `GET /api/v1/query/:id/report`
+- `GET /api/v1/workspaces`
+- `POST /api/v1/workspaces`
 - `GET /api/v1/sources`
 - `POST /api/v1/sources`
 - `POST /api/v1/sources/:id/documents`
 - `POST /api/queries`
 - `GET /api/queries/:id`
 - `GET /api/queries/:id/report`
+- `GET /api/workspaces`
+- `POST /api/workspaces`
 - `GET /api/sources`
 - `POST /api/sources`
 - `POST /api/sources/:id/documents`
@@ -85,6 +92,7 @@ npm run dev
 Open `http://localhost:3000`.
 
 Create a corpus from the UI at `http://localhost:3000/sources`.
+Manage workspaces and copy API keys from `http://localhost:3000/workspaces`.
 
 ## Quick API Demo
 
@@ -92,6 +100,7 @@ Run one paid query directly against the public endpoint:
 
 ```bash
 curl -X POST http://localhost:3000/api/v1/query \
+  -H 'x-agentpay-workspace-key: <workspace-api-key>' \
   -H 'content-type: application/json' \
   -d '{
     "question": "What discount guardrails protect renewal margin?",
@@ -111,6 +120,7 @@ Create a source collection:
 
 ```bash
 curl -X POST http://localhost:3000/api/v1/sources \
+  -H 'x-agentpay-workspace-key: <workspace-api-key>' \
   -H 'content-type: application/json' \
   -d '{
     "name": "Founder Memos",
@@ -124,6 +134,7 @@ Ingest a document:
 
 ```bash
 curl -X POST http://localhost:3000/api/v1/sources/<source-id>/documents \
+  -H 'x-agentpay-workspace-key: <workspace-api-key>' \
   -H 'content-type: application/json' \
   -d '{
     "documents": [
@@ -132,6 +143,16 @@ curl -X POST http://localhost:3000/api/v1/sources/<source-id>/documents \
         "body": "We should monetize premium grounded answers before broad seat expansion."
       }
     ]
+  }'
+```
+
+Create a workspace:
+
+```bash
+curl -X POST http://localhost:3000/api/v1/workspaces \
+  -H 'content-type: application/json' \
+  -d '{
+    "name": "Acme Revenue Team"
   }'
 ```
 

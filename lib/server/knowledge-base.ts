@@ -4,6 +4,7 @@ import { join } from 'path';
 import type {
   CreateKnowledgeSourcePayload,
   CreateQueryPayload,
+  CreateWorkspacePayload,
   IngestKnowledgeDocumentsPayload,
   KnowledgeSource,
   Policy,
@@ -14,6 +15,8 @@ import type {
   QueryReport,
   SourceMutationResponse,
   SummaryStats,
+  Workspace,
+  WorkspaceMutationResponse,
 } from '@/lib/types';
 import { liveSynthesisEnabled, synthesizeWithTempo } from '@/lib/server/live-synthesis';
 
@@ -30,15 +33,32 @@ type KnowledgeDocument = {
 
 type PersistedKnowledgeBaseState = {
   version: 2;
+  workspaces: Workspace[];
   sources: KnowledgeSource[];
   documents: KnowledgeDocument[];
   reports: QueryReport[];
   policy: Policy;
 };
 
+const DEFAULT_WORKSPACE_ID = 'workspace-demo';
+
+const seedWorkspaces: Workspace[] = [
+  {
+    id: DEFAULT_WORKSPACE_ID,
+    name: 'Demo Workspace',
+    slug: 'demo',
+    apiKey: 'tempo_demo_workspace_key',
+    createdAt: '2026-03-24T16:00:00.000Z',
+    sourceCount: 3,
+    queryCount: 3,
+    totalRevenue: 0.084,
+  },
+];
+
 const seedSources: KnowledgeSource[] = [
   {
     id: 'pricing-ops',
+    workspaceId: DEFAULT_WORKSPACE_ID,
     name: 'Pricing Operations',
     description: 'Internal pricing memos, deal guardrails, and discount policy notes.',
     documentCount: 4,
@@ -49,6 +69,7 @@ const seedSources: KnowledgeSource[] = [
   },
   {
     id: 'engineering-runbooks',
+    workspaceId: DEFAULT_WORKSPACE_ID,
     name: 'Engineering Runbooks',
     description: 'Incident guides, deployment checklists, and latency remediation notes.',
     documentCount: 4,
@@ -59,6 +80,7 @@ const seedSources: KnowledgeSource[] = [
   },
   {
     id: 'customer-education',
+    workspaceId: DEFAULT_WORKSPACE_ID,
     name: 'Customer Education',
     description: 'FAQ copy, onboarding notes, and implementation guidance for customers.',
     documentCount: 4,
@@ -246,6 +268,36 @@ function uniqueId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function buildWorkspaceApiKey(slug: string): string {
+  return `tempo_${slug}_${Math.random().toString(36).slice(2, 14)}`;
+}
+
+function computeWorkspaceStats(workspace: Workspace, state: PersistedKnowledgeBaseState): Workspace {
+  const sourceCount = state.sources.filter((source) => source.workspaceId === workspace.id).length;
+  const workspaceReports = state.reports.filter((report) => report.query.workspaceId === workspace.id);
+
+  return {
+    ...workspace,
+    sourceCount,
+    queryCount: workspaceReports.length,
+    totalRevenue: Number(workspaceReports.reduce((sum, report) => sum + report.receipt.amount, 0).toFixed(3)),
+  };
+}
+
+function resolveWorkspace(state: PersistedKnowledgeBaseState, workspaceId?: string): Workspace {
+  if (workspaceId) {
+    const match = state.workspaces.find((workspace) => workspace.id === workspaceId);
+    if (match) return match;
+  }
+
+  const fallback = state.workspaces[0] ?? seedWorkspaces[0];
+  if (!fallback) {
+    throw new Error('No workspaces are configured');
+  }
+
+  return fallback;
+}
+
 function computeSourceStats(source: KnowledgeSource, documents: KnowledgeDocument[]): KnowledgeSource {
   const scopedDocs = documents.filter((document) => document.sourceId === source.id);
   const lastIndexedAt =
@@ -400,6 +452,7 @@ async function createReport(payload: CreateQueryPayload, id: string, state: Pers
     query: {
       id,
       question: payload.question,
+      workspaceId: source.workspaceId,
       sourceId: source.id,
       sourceLabel: source.name,
       mode: payload.mode,
@@ -455,6 +508,7 @@ function buildSeededReport(payload: CreateQueryPayload, id: string, state: Persi
     query: {
       id,
       question: payload.question,
+      workspaceId: source.workspaceId,
       sourceId: source.id,
       sourceLabel: source.name,
       mode: payload.mode,
@@ -489,6 +543,7 @@ function buildSeededReport(payload: CreateQueryPayload, id: string, state: Persi
 function createSeedState(): PersistedKnowledgeBaseState {
   const baseState: PersistedKnowledgeBaseState = {
     version: 2,
+    workspaces: seedWorkspaces.map((workspace) => ({ ...workspace })),
     sources: seedSources.map((source) => ({ ...source })),
     documents: seedDocuments.map((document) => ({ ...document })),
     reports: [],
@@ -538,11 +593,40 @@ function createSeedState(): PersistedKnowledgeBaseState {
 }
 
 function normalizeState(state: PersistedKnowledgeBaseState): PersistedKnowledgeBaseState {
+  const normalizedSources = state.sources.map((source) =>
+    computeSourceStats(
+      {
+        ...source,
+        workspaceId: source.workspaceId || DEFAULT_WORKSPACE_ID,
+      },
+      state.documents
+    )
+  );
+  const normalizedReports = state.reports.map((report) => ({
+    ...report,
+    query: {
+      ...report.query,
+      workspaceId:
+        report.query.workspaceId ||
+        normalizedSources.find((source) => source.id === report.query.sourceId)?.workspaceId ||
+        DEFAULT_WORKSPACE_ID,
+    },
+  }));
+
   return {
     version: 2,
-    sources: state.sources.map((source) => computeSourceStats(source, state.documents)),
+    workspaces: state.workspaces.map((workspace) =>
+      computeWorkspaceStats(
+        {
+          ...workspace,
+          apiKey: workspace.apiKey || buildWorkspaceApiKey(workspace.slug || 'workspace'),
+        },
+        { ...state, sources: normalizedSources, reports: normalizedReports }
+      )
+    ),
+    sources: normalizedSources,
     documents: state.documents,
-    reports: state.reports,
+    reports: normalizedReports,
     policy: state.policy,
   };
 }
@@ -570,6 +654,7 @@ function loadState(): PersistedKnowledgeBaseState {
 
     return normalizeState({
       version: 2,
+      workspaces: Array.isArray(record.workspaces) ? (record.workspaces as Workspace[]) : seeded.workspaces,
       sources: record.sources as KnowledgeSource[],
       documents: record.documents as KnowledgeDocument[],
       reports: record.reports as QueryReport[],
@@ -608,6 +693,62 @@ export function listKnowledgeSources(): KnowledgeSource[] {
   return state.sources.map((source) => computeSourceStats(source, state.documents));
 }
 
+export function listKnowledgeSourcesForWorkspace(workspaceId: string): KnowledgeSource[] {
+  const state = getState();
+  return state.sources.filter((source) => source.workspaceId === workspaceId).map((source) => computeSourceStats(source, state.documents));
+}
+
+export function listWorkspaces(): Workspace[] {
+  const state = getState();
+  return state.workspaces.map((workspace) => computeWorkspaceStats(workspace, state));
+}
+
+export function createWorkspace(payload: CreateWorkspacePayload): WorkspaceMutationResponse {
+  const name = payload.name.trim();
+  if (!name) {
+    throw new Error('Workspace name is required');
+  }
+
+  return withState((state) => {
+    const slugBase = slugify(name) || 'workspace';
+    let slug = slugBase;
+    let suffix = 1;
+    while (state.workspaces.some((workspace) => workspace.slug === slug)) {
+      suffix += 1;
+      slug = `${slugBase}-${suffix}`;
+    }
+
+    const workspace: Workspace = {
+      id: `workspace-${slug}`,
+      name,
+      slug,
+      apiKey: buildWorkspaceApiKey(slug),
+      createdAt: new Date().toISOString(),
+      sourceCount: 0,
+      queryCount: 0,
+      totalRevenue: 0,
+    };
+
+    state.workspaces.push(workspace);
+    return {
+      workspace,
+      message: 'Workspace created',
+    };
+  });
+}
+
+export function getWorkspaceByApiKey(apiKey?: string | null): Workspace {
+  const state = getState();
+  if (apiKey) {
+    const match = state.workspaces.find((workspace) => workspace.apiKey === apiKey);
+    if (match) {
+      return computeWorkspaceStats(match, state);
+    }
+  }
+
+  return computeWorkspaceStats(resolveWorkspace(state), state);
+}
+
 export function getPolicy(): Policy {
   return getState().policy;
 }
@@ -628,7 +769,7 @@ export function getProviderHealth(): ProviderHealth[] {
   return providerHealth;
 }
 
-export function createKnowledgeSource(payload: CreateKnowledgeSourcePayload): SourceMutationResponse {
+export function createKnowledgeSource(payload: CreateKnowledgeSourcePayload, workspaceId?: string): SourceMutationResponse {
   const name = payload.name.trim();
   const description = payload.description.trim();
   if (!name || !description) {
@@ -636,6 +777,7 @@ export function createKnowledgeSource(payload: CreateKnowledgeSourcePayload): So
   }
 
   return withState((state) => {
+    const workspace = resolveWorkspace(state, workspaceId);
     const baseId = slugify(name) || 'source';
     let sourceId = baseId;
     let suffix = 1;
@@ -647,6 +789,7 @@ export function createKnowledgeSource(payload: CreateKnowledgeSourcePayload): So
     const createdAt = new Date().toISOString();
     const source: KnowledgeSource = {
       id: sourceId,
+      workspaceId: workspace.id,
       name,
       description,
       documentCount: 0,
@@ -664,7 +807,7 @@ export function createKnowledgeSource(payload: CreateKnowledgeSourcePayload): So
   });
 }
 
-export function ingestKnowledgeDocuments(sourceId: string, payload: IngestKnowledgeDocumentsPayload): SourceMutationResponse {
+export function ingestKnowledgeDocuments(sourceId: string, payload: IngestKnowledgeDocumentsPayload, workspaceId?: string): SourceMutationResponse {
   const documentsToAdd = payload.documents
     .map((document) => ({
       title: document.title.trim(),
@@ -679,8 +822,9 @@ export function ingestKnowledgeDocuments(sourceId: string, payload: IngestKnowle
   }
 
   return withState((state) => {
+    const workspace = resolveWorkspace(state, workspaceId);
     const source = state.sources.find((entry) => entry.id === sourceId);
-    if (!source) {
+    if (!source || source.workspaceId !== workspace.id) {
       throw new Error(`Source ${sourceId} was not found`);
     }
 
@@ -712,11 +856,17 @@ export function ingestKnowledgeDocuments(sourceId: string, payload: IngestKnowle
   });
 }
 
-export async function createQuery(payload: CreateQueryPayload): Promise<QueryCreateResponse> {
+export async function createQuery(payload: CreateQueryPayload, workspaceId?: string): Promise<QueryCreateResponse> {
   const state = getState();
+  const workspace = resolveWorkspace(state, workspaceId);
 
   if (state.policy.manualKillSwitch) {
     throw new Error('Query intake is paused by pricing policy');
+  }
+
+  const source = state.sources.find((entry) => entry.id === payload.sourceId);
+  if (!source || source.workspaceId !== workspace.id) {
+    throw new Error('Source collection is not available for this workspace');
   }
 
   const id = generateQueryId();
@@ -732,29 +882,34 @@ export async function createQuery(payload: CreateQueryPayload): Promise<QueryCre
   });
 }
 
-export function getQuery(id: string): Query {
+export function getQuery(id: string, workspaceId?: string): Query {
   const state = getState();
+  const workspace = resolveWorkspace(state, workspaceId);
   const report = getReportStore(state).get(id);
-  if (!report) {
+  if (!report || report.query.workspaceId !== workspace.id) {
     throw new Error(`Query ${id} was not found`);
   }
 
   return report.query;
 }
 
-export function getQueryReport(id: string): QueryReport {
+export function getQueryReport(id: string, workspaceId?: string): QueryReport {
   const state = getState();
+  const workspace = resolveWorkspace(state, workspaceId);
   const report = getReportStore(state).get(id);
-  if (!report) {
+  if (!report || report.query.workspaceId !== workspace.id) {
     throw new Error(`Query ${id} was not found`);
   }
 
   return report;
 }
 
-export function getSummary(): SummaryStats {
+export function getSummary(workspaceId?: string): SummaryStats {
   const state = getState();
-  const reports = [...state.reports].sort((left, right) => right.query.createdAt.localeCompare(left.query.createdAt));
+  const workspace = resolveWorkspace(state, workspaceId);
+  const reports = state.reports
+    .filter((report) => report.query.workspaceId === workspace.id)
+    .sort((left, right) => right.query.createdAt.localeCompare(left.query.createdAt));
   const totalQueries = reports.length;
   const answered = reports.filter((report) => report.query.status === 'answered').length;
   const totalRevenue = reports.reduce((sum, report) => sum + report.receipt.amount, 0);
@@ -769,7 +924,9 @@ export function getSummary(): SummaryStats {
     avgLatencyMs: totalQueries > 0 ? totalLatency / totalQueries : 0,
     citationCoverageRate: totalQueries > 0 ? (withCitations / totalQueries) * 100 : 0,
     recentQueries: reports.slice(0, 5).map((report) => report.query),
-    sourceCatalog: state.sources.map((source) => computeSourceStats(source, state.documents)),
+    sourceCatalog: state.sources
+      .filter((source) => source.workspaceId === workspace.id)
+      .map((source) => computeSourceStats(source, state.documents)),
     providerHealth,
     revenueTrend: [
       { label: '08:00', revenue: 0.048, queries: 2 },

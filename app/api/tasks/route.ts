@@ -4,5 +4,5 @@ import { proxyTaskCreate } from '@/lib/server/proxy';
 
 export async function POST(request: NextRequest) {
   const body = (await request.json().catch(() => null)) as unknown;
-  return proxyTaskCreate(body);
+  return proxyTaskCreate(body, request.headers);
 }
