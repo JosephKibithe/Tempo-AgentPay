@@ -2,6 +2,8 @@
 
 Tempo Query Commerce is a pay-per-query knowledge base demo built on Next.js. It packages a customer-facing query flow, receipt detail pages, source collection browsing, pricing controls, and retrieval telemetry into one product-shaped app.
 
+The strongest product story is simple: machine-buyable knowledge with no API keys and no accounts. Pay for one grounded answer, get citations and a receipt, and move on.
+
 The repo still keeps the original TypeScript AgentPay runtime in [`src/`](./src), but the main app is now a monetizable vertical slice: ask a grounded question against a source collection, meter the answer, and show the receipt with citations.
 
 ## Stack
@@ -16,6 +18,9 @@ The repo still keeps the original TypeScript AgentPay runtime in [`src/`](./src)
 
 ## Product Features
 
+- Public API-first query surface at `POST /api/v1/query`
+- Receipt lookup flow at `GET /api/v1/query/:id/report`
+- Persistent source creation and document ingestion through the app UI and API
 - Dashboard with paid-query volume, answer rate, revenue, citation coverage, and latency
 - Query form for asking a paid question against a chosen source collection
 - Receipt/detail page with answer, citations, pipeline trace, and settlement metadata
@@ -28,10 +33,18 @@ The repo still keeps the original TypeScript AgentPay runtime in [`src/`](./src)
 
 Primary routes:
 
+- `POST /api/v1/query`
+- `GET /api/v1/query/:id`
+- `GET /api/v1/query/:id/report`
+- `GET /api/v1/sources`
+- `POST /api/v1/sources`
+- `POST /api/v1/sources/:id/documents`
 - `POST /api/queries`
 - `GET /api/queries/:id`
 - `GET /api/queries/:id/report`
 - `GET /api/sources`
+- `POST /api/sources`
+- `POST /api/sources/:id/documents`
 - `GET /api/providers/health`
 - `GET /api/policy`
 - `PATCH /api/policy`
@@ -70,6 +83,57 @@ npm run dev
 ```
 
 Open `http://localhost:3000`.
+
+Create a corpus from the UI at `http://localhost:3000/sources`.
+
+## Quick API Demo
+
+Run one paid query directly against the public endpoint:
+
+```bash
+curl -X POST http://localhost:3000/api/v1/query \
+  -H 'content-type: application/json' \
+  -d '{
+    "question": "What discount guardrails protect renewal margin?",
+    "sourceId": "pricing-ops",
+    "mode": "balanced",
+    "priceCeiling": 0.04
+  }'
+```
+
+Then fetch the report:
+
+```bash
+curl http://localhost:3000/api/v1/query/<query-id>/report
+```
+
+Create a source collection:
+
+```bash
+curl -X POST http://localhost:3000/api/v1/sources \
+  -H 'content-type: application/json' \
+  -d '{
+    "name": "Founder Memos",
+    "description": "Private strategy and GTM notes.",
+    "avgPricePerQuery": 0.03,
+    "topics": ["strategy", "pricing"]
+  }'
+```
+
+Ingest a document:
+
+```bash
+curl -X POST http://localhost:3000/api/v1/sources/<source-id>/documents \
+  -H 'content-type: application/json' \
+  -d '{
+    "documents": [
+      {
+        "title": "Launch Pricing Direction",
+        "body": "We should monetize premium grounded answers before broad seat expansion."
+      }
+    ]
+  }'
+```
 
 ## Commands
 

@@ -72,6 +72,31 @@ export interface KnowledgeSource {
   topics: string[];
 }
 
+export interface SourceDocumentInput {
+  title: string;
+  body: string;
+  uri?: string;
+  updatedAt?: string;
+}
+
+export interface CreateKnowledgeSourcePayload {
+  name: string;
+  description: string;
+  avgPricePerQuery?: number;
+  freshnessNote?: string;
+  topics?: string[];
+}
+
+export interface IngestKnowledgeDocumentsPayload {
+  documents: SourceDocumentInput[];
+}
+
+export interface SourceMutationResponse {
+  source: KnowledgeSource;
+  message: string;
+  addedDocuments?: number;
+}
+
 export interface ProviderHealth {
   provider: string;
   successRate: number;

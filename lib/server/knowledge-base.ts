@@ -2,7 +2,9 @@ import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 
 import type {
+  CreateKnowledgeSourcePayload,
   CreateQueryPayload,
+  IngestKnowledgeDocumentsPayload,
   KnowledgeSource,
   Policy,
   ProviderHealth,
@@ -10,6 +12,7 @@ import type {
   QueryAttempt,
   QueryCreateResponse,
   QueryReport,
+  SourceMutationResponse,
   SummaryStats,
 } from '@/lib/types';
 import { liveSynthesisEnabled, synthesizeWithTempo } from '@/lib/server/live-synthesis';
@@ -25,7 +28,15 @@ type KnowledgeDocument = {
   body: string;
 };
 
-const knowledgeSources: KnowledgeSource[] = [
+type PersistedKnowledgeBaseState = {
+  version: 2;
+  sources: KnowledgeSource[];
+  documents: KnowledgeDocument[];
+  reports: QueryReport[];
+  policy: Policy;
+};
+
+const seedSources: KnowledgeSource[] = [
   {
     id: 'pricing-ops',
     name: 'Pricing Operations',
@@ -58,7 +69,7 @@ const knowledgeSources: KnowledgeSource[] = [
   },
 ];
 
-const documents: KnowledgeDocument[] = [
+const seedDocuments: KnowledgeDocument[] = [
   {
     id: 'pricing-1',
     sourceId: 'pricing-ops',
@@ -194,7 +205,7 @@ const providerHealth: ProviderHealth[] = [
   },
 ];
 
-let policy: Policy = {
+const defaultPolicy: Policy = {
   defaultPriceCeiling: 0.04,
   deepModeSurcharge: 0.012,
   maxCitationsPerAnswer: 5,
@@ -222,14 +233,41 @@ function modeMultiplier(mode: CreateQueryPayload['mode']): number {
   }
 }
 
-function baseCostForSource(sourceId: string): number {
-  const source = knowledgeSources.find((entry) => entry.id === sourceId);
+function slugify(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 48);
+}
+
+function uniqueId(prefix: string): string {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function computeSourceStats(source: KnowledgeSource, documents: KnowledgeDocument[]): KnowledgeSource {
+  const scopedDocs = documents.filter((document) => document.sourceId === source.id);
+  const lastIndexedAt =
+    scopedDocs
+      .map((document) => document.updatedAt)
+      .sort((left, right) => right.localeCompare(left))[0] ?? source.lastIndexedAt ?? new Date().toISOString();
+
+  return {
+    ...source,
+    documentCount: scopedDocs.length,
+    lastIndexedAt,
+  };
+}
+
+function baseCostForSource(sourceId: string, state: PersistedKnowledgeBaseState): number {
+  const source = state.sources.find((entry) => entry.id === sourceId);
   return source?.avgPricePerQuery ?? 0.02;
 }
 
-function scoreDocuments(question: string, sourceId: string) {
+function scoreDocuments(question: string, sourceId: string, state: PersistedKnowledgeBaseState) {
   const tokens = tokenize(question);
-  const scoped = documents.filter((document) => document.sourceId === sourceId);
+  const scoped = state.documents.filter((document) => document.sourceId === sourceId);
 
   const ranked = scoped
     .map((document) => {
@@ -241,7 +279,7 @@ function scoreDocuments(question: string, sourceId: string) {
 
   return {
     tokens,
-    ranked: ranked.filter((entry) => entry.score > 0).slice(0, policy.maxSourcesPerQuery),
+    ranked: ranked.filter((entry) => entry.score > 0).slice(0, state.policy.maxSourcesPerQuery),
   };
 }
 
@@ -307,13 +345,14 @@ function makeAttempts(queryId: string, retrievalLatencyMs: number, synthesisLate
   ];
 }
 
-async function createReport(payload: CreateQueryPayload, id: string): Promise<QueryReport> {
-  const source = knowledgeSources.find((entry) => entry.id === payload.sourceId) ?? knowledgeSources[0];
+async function createReport(payload: CreateQueryPayload, id: string, state: PersistedKnowledgeBaseState): Promise<QueryReport> {
+  const source = state.sources.find((entry) => entry.id === payload.sourceId) ?? state.sources[0];
   if (!source) {
     throw new Error('No knowledge sources are configured');
   }
-  const { tokens, ranked } = scoreDocuments(payload.question, source.id);
-  const baseCost = baseCostForSource(source.id) * modeMultiplier(payload.mode);
+
+  const { tokens, ranked } = scoreDocuments(payload.question, source.id, state);
+  const baseCost = baseCostForSource(source.id, state) * modeMultiplier(payload.mode);
   const totalCost = Number(Math.min(payload.priceCeiling, baseCost).toFixed(3));
   const retrievalLatencyMs = 120 + ranked.length * 35;
   const createdAt = new Date().toISOString();
@@ -389,46 +428,15 @@ async function createReport(payload: CreateQueryPayload, id: string): Promise<Qu
   };
 }
 
-const seededReports = [
-  awaitableReport(
-    {
-      question: 'How should we structure discounts for a proof-of-value customer without destroying recurring revenue?',
-      sourceId: 'pricing-ops',
-      mode: 'balanced',
-      priceCeiling: 0.04,
-      tags: { workspace: 'revops', persona: 'sales' },
-    },
-    'query-20260324-001'
-  ),
-  awaitableReport(
-    {
-      question: 'What should we check first when retrieval latency spikes above two seconds?',
-      sourceId: 'engineering-runbooks',
-      mode: 'deep',
-      priceCeiling: 0.06,
-      tags: { workspace: 'platform', severity: 'p2' },
-    },
-    'query-20260324-002'
-  ),
-  awaitableReport(
-    {
-      question: 'How do we explain receipts and billed answers to a new customer?',
-      sourceId: 'customer-education',
-      mode: 'fast',
-      priceCeiling: 0.03,
-      tags: { workspace: 'success', persona: 'customer' },
-    },
-    'query-20260324-003'
-  ),
-];
-function awaitableReport(payload: CreateQueryPayload, id: string): QueryReport {
-  const source = knowledgeSources.find((entry) => entry.id === payload.sourceId) ?? knowledgeSources[0];
+function buildSeededReport(payload: CreateQueryPayload, id: string, state: PersistedKnowledgeBaseState): QueryReport {
+  const source = state.sources.find((entry) => entry.id === payload.sourceId) ?? state.sources[0];
   if (!source) {
     throw new Error('No knowledge sources are configured');
   }
-  const { tokens, ranked } = scoreDocuments(payload.question, source.id);
+
+  const { tokens, ranked } = scoreDocuments(payload.question, source.id, state);
   const answer = buildAnswer(payload.question, ranked);
-  const baseCost = baseCostForSource(source.id) * modeMultiplier(payload.mode);
+  const baseCost = baseCostForSource(source.id, state) * modeMultiplier(payload.mode);
   const totalCost = Number(Math.min(payload.priceCeiling, baseCost).toFixed(3));
   const retrievalLatencyMs = 120 + ranked.length * 35;
   const synthesisLatencyMs = payload.mode === 'deep' ? 1650 : payload.mode === 'fast' ? 680 : 980;
@@ -478,72 +486,255 @@ function awaitableReport(payload: CreateQueryPayload, id: string): QueryReport {
   };
 }
 
-function loadReports(): QueryReport[] {
+function createSeedState(): PersistedKnowledgeBaseState {
+  const baseState: PersistedKnowledgeBaseState = {
+    version: 2,
+    sources: seedSources.map((source) => ({ ...source })),
+    documents: seedDocuments.map((document) => ({ ...document })),
+    reports: [],
+    policy: { ...defaultPolicy },
+  };
+
+  baseState.reports = [
+    buildSeededReport(
+      {
+        question: 'How should we structure discounts for a proof-of-value customer without destroying recurring revenue?',
+        sourceId: 'pricing-ops',
+        mode: 'balanced',
+        priceCeiling: 0.04,
+        tags: { workspace: 'revops', persona: 'sales' },
+      },
+      'query-20260324-001',
+      baseState
+    ),
+    buildSeededReport(
+      {
+        question: 'What should we check first when retrieval latency spikes above two seconds?',
+        sourceId: 'engineering-runbooks',
+        mode: 'deep',
+        priceCeiling: 0.06,
+        tags: { workspace: 'platform', severity: 'p2' },
+      },
+      'query-20260324-002',
+      baseState
+    ),
+    buildSeededReport(
+      {
+        question: 'How do we explain receipts and billed answers to a new customer?',
+        sourceId: 'customer-education',
+        mode: 'fast',
+        priceCeiling: 0.03,
+        tags: { workspace: 'success', persona: 'customer' },
+      },
+      'query-20260324-003',
+      baseState
+    ),
+  ];
+
+  return {
+    ...baseState,
+    sources: baseState.sources.map((source) => computeSourceStats(source, baseState.documents)),
+  };
+}
+
+function normalizeState(state: PersistedKnowledgeBaseState): PersistedKnowledgeBaseState {
+  return {
+    version: 2,
+    sources: state.sources.map((source) => computeSourceStats(source, state.documents)),
+    documents: state.documents,
+    reports: state.reports,
+    policy: state.policy,
+  };
+}
+
+function loadState(): PersistedKnowledgeBaseState {
+  const seeded = createSeedState();
   if (!existsSync(STORE_PATH)) {
-    return seededReports;
+    return seeded;
   }
 
   try {
-    const parsed = JSON.parse(readFileSync(STORE_PATH, 'utf8')) as QueryReport[];
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed : seededReports;
+    const parsed = JSON.parse(readFileSync(STORE_PATH, 'utf8')) as unknown;
+
+    if (Array.isArray(parsed)) {
+      return {
+        ...seeded,
+        reports: parsed as QueryReport[],
+      };
+    }
+
+    const record = typeof parsed === 'object' && parsed !== null ? (parsed as Partial<PersistedKnowledgeBaseState>) : null;
+    if (!record || !Array.isArray(record.sources) || !Array.isArray(record.documents) || !Array.isArray(record.reports)) {
+      return seeded;
+    }
+
+    return normalizeState({
+      version: 2,
+      sources: record.sources as KnowledgeSource[],
+      documents: record.documents as KnowledgeDocument[],
+      reports: record.reports as QueryReport[],
+      policy: (record.policy as Policy | undefined) ?? seeded.policy,
+    });
   } catch {
-    return seededReports;
+    return seeded;
   }
 }
 
-function saveReports(reports: QueryReport[]) {
-  writeFileSync(STORE_PATH, JSON.stringify(reports, null, 2));
+function saveState(state: PersistedKnowledgeBaseState) {
+  writeFileSync(STORE_PATH, JSON.stringify(normalizeState(state), null, 2));
 }
 
-function getReportStore(): Map<string, QueryReport> {
-  return new Map(loadReports().map((report) => [report.query.id, report]));
+function getState(): PersistedKnowledgeBaseState {
+  return loadState();
 }
 
-function generateId() {
+function withState<T>(mutate: (state: PersistedKnowledgeBaseState) => T): T {
+  const state = getState();
+  const result = mutate(state);
+  saveState(state);
+  return result;
+}
+
+function getReportStore(state: PersistedKnowledgeBaseState): Map<string, QueryReport> {
+  return new Map(state.reports.map((report) => [report.query.id, report]));
+}
+
+function generateQueryId() {
   return `query-${Date.now()}`;
 }
 
 export function listKnowledgeSources(): KnowledgeSource[] {
-  return knowledgeSources;
+  const state = getState();
+  return state.sources.map((source) => computeSourceStats(source, state.documents));
 }
 
 export function getPolicy(): Policy {
-  return policy;
+  return getState().policy;
 }
 
 export function updatePolicy(patch: Partial<Policy>): Policy {
-  policy = {
-    ...policy,
-    ...patch,
-    updatedAt: new Date().toISOString(),
-  };
+  return withState((state) => {
+    state.policy = {
+      ...state.policy,
+      ...patch,
+      updatedAt: new Date().toISOString(),
+    };
 
-  return policy;
+    return state.policy;
+  });
 }
 
 export function getProviderHealth(): ProviderHealth[] {
   return providerHealth;
 }
 
+export function createKnowledgeSource(payload: CreateKnowledgeSourcePayload): SourceMutationResponse {
+  const name = payload.name.trim();
+  const description = payload.description.trim();
+  if (!name || !description) {
+    throw new Error('Source name and description are required');
+  }
+
+  return withState((state) => {
+    const baseId = slugify(name) || 'source';
+    let sourceId = baseId;
+    let suffix = 1;
+    while (state.sources.some((source) => source.id === sourceId)) {
+      suffix += 1;
+      sourceId = `${baseId}-${suffix}`;
+    }
+
+    const createdAt = new Date().toISOString();
+    const source: KnowledgeSource = {
+      id: sourceId,
+      name,
+      description,
+      documentCount: 0,
+      avgPricePerQuery: Number((payload.avgPricePerQuery ?? 0.02).toFixed(3)),
+      freshnessNote: payload.freshnessNote?.trim() || 'Updated when contributors ingest new documents.',
+      lastIndexedAt: createdAt,
+      topics: (payload.topics ?? []).map((topic) => topic.trim()).filter(Boolean),
+    };
+
+    state.sources.push(source);
+    return {
+      source,
+      message: 'Source collection created',
+    };
+  });
+}
+
+export function ingestKnowledgeDocuments(sourceId: string, payload: IngestKnowledgeDocumentsPayload): SourceMutationResponse {
+  const documentsToAdd = payload.documents
+    .map((document) => ({
+      title: document.title.trim(),
+      body: document.body.trim(),
+      uri: document.uri?.trim() || '',
+      updatedAt: document.updatedAt?.trim() || '',
+    }))
+    .filter((document) => document.title && document.body);
+
+  if (documentsToAdd.length === 0) {
+    throw new Error('At least one document with a title and body is required');
+  }
+
+  return withState((state) => {
+    const source = state.sources.find((entry) => entry.id === sourceId);
+    if (!source) {
+      throw new Error(`Source ${sourceId} was not found`);
+    }
+
+    const ingestedAt = new Date().toISOString();
+    const newDocuments = documentsToAdd.map((document, index) => ({
+      id: uniqueId(`${sourceId}-doc-${index + 1}`),
+      sourceId,
+      title: document.title,
+      body: document.body,
+      updatedAt: document.updatedAt || ingestedAt,
+      uri: document.uri || `kb://${sourceId}/${slugify(document.title) || `doc-${index + 1}`}`,
+    }));
+
+    state.documents.push(...newDocuments);
+    const sourceIndex = state.sources.findIndex((entry) => entry.id === sourceId);
+    state.sources[sourceIndex] = computeSourceStats(
+      {
+        ...source,
+        lastIndexedAt: ingestedAt,
+      },
+      state.documents
+    );
+
+    return {
+      source: state.sources[sourceIndex],
+      addedDocuments: newDocuments.length,
+      message: 'Documents ingested successfully',
+    };
+  });
+}
+
 export async function createQuery(payload: CreateQueryPayload): Promise<QueryCreateResponse> {
-  if (policy.manualKillSwitch) {
+  const state = getState();
+
+  if (state.policy.manualKillSwitch) {
     throw new Error('Query intake is paused by pricing policy');
   }
 
-  const id = generateId();
-  const report = await createReport(payload, id);
-  const reports = [...getReportStore().values(), report];
-  saveReports(reports);
+  const id = generateQueryId();
+  const report = await createReport(payload, id, state);
 
-  return {
-    query: report.query,
-    message: 'Query paid and answered successfully',
-    estimatedCharge: report.receipt.amount,
-  };
+  return withState((latestState) => {
+    latestState.reports.push(report);
+    return {
+      query: report.query,
+      message: 'Query paid and answered successfully',
+      estimatedCharge: report.receipt.amount,
+    };
+  });
 }
 
 export function getQuery(id: string): Query {
-  const report = getReportStore().get(id);
+  const state = getState();
+  const report = getReportStore(state).get(id);
   if (!report) {
     throw new Error(`Query ${id} was not found`);
   }
@@ -552,7 +743,8 @@ export function getQuery(id: string): Query {
 }
 
 export function getQueryReport(id: string): QueryReport {
-  const report = getReportStore().get(id);
+  const state = getState();
+  const report = getReportStore(state).get(id);
   if (!report) {
     throw new Error(`Query ${id} was not found`);
   }
@@ -561,9 +753,8 @@ export function getQueryReport(id: string): QueryReport {
 }
 
 export function getSummary(): SummaryStats {
-  const reports = [...getReportStore().values()].sort((left, right) =>
-    right.query.createdAt.localeCompare(left.query.createdAt)
-  );
+  const state = getState();
+  const reports = [...state.reports].sort((left, right) => right.query.createdAt.localeCompare(left.query.createdAt));
   const totalQueries = reports.length;
   const answered = reports.filter((report) => report.query.status === 'answered').length;
   const totalRevenue = reports.reduce((sum, report) => sum + report.receipt.amount, 0);
@@ -578,7 +769,7 @@ export function getSummary(): SummaryStats {
     avgLatencyMs: totalQueries > 0 ? totalLatency / totalQueries : 0,
     citationCoverageRate: totalQueries > 0 ? (withCitations / totalQueries) * 100 : 0,
     recentQueries: reports.slice(0, 5).map((report) => report.query),
-    sourceCatalog: knowledgeSources,
+    sourceCatalog: state.sources.map((source) => computeSourceStats(source, state.documents)),
     providerHealth,
     revenueTrend: [
       { label: '08:00', revenue: 0.048, queries: 2 },

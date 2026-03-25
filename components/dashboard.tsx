@@ -29,6 +29,7 @@ const chartTooltipStyle = {
 export function DashboardPage() {
   return (
     <div className="space-y-6">
+      <ProductHero />
       <ErrorBoundary fallbackTitle="Query commerce summary unavailable">
         <SummaryGrid />
       </ErrorBoundary>
@@ -47,6 +48,80 @@ export function DashboardPage() {
         <RevenuePanel />
       </ErrorBoundary>
     </div>
+  );
+}
+
+function ProductHero() {
+  return (
+    <Card className="overflow-hidden border-white/15 bg-black/90">
+      <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+        <div className="space-y-5">
+          <div className="space-y-3">
+            <p className="wf-label text-accentGreen">No API Keys. No Accounts.</p>
+            <h2 className="max-w-3xl text-3xl font-semibold tracking-tight text-ink md:text-5xl">
+              Machine-buyable knowledge for agents that need a grounded answer right now.
+            </h2>
+            <p className="max-w-2xl text-sm leading-7 text-muted md:text-base">
+              Pay once, ask one question, and get a cited answer plus a receipt. The dashboard is proof that the service
+              is working. The product is the query endpoint.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-3">
+            <Link
+              href="/queries/new"
+              className="rounded-sm border border-white bg-white px-4 py-2.5 text-sm font-medium uppercase tracking-[0.12em] text-black transition hover:bg-transparent hover:text-white"
+            >
+              Run Paid Query
+            </Link>
+            <Link
+              href="/sources"
+              className="rounded-sm border border-white/15 bg-white/[0.03] px-4 py-2.5 text-sm font-medium uppercase tracking-[0.12em] text-ink transition hover:border-white/30 hover:bg-white/[0.06]"
+            >
+              Ingest Sources
+            </Link>
+            <Link
+              href="/providers"
+              className="rounded-sm border border-white/15 bg-white/[0.03] px-4 py-2.5 text-sm font-medium uppercase tracking-[0.12em] text-ink transition hover:border-white/30 hover:bg-white/[0.06]"
+            >
+              Inspect Runtime
+            </Link>
+          </div>
+          <div className="grid gap-3 md:grid-cols-3">
+            <div className="rounded-sm border border-line bg-panelSoft/60 p-4">
+              <p className="wf-label">Access Model</p>
+              <p className="mt-2 text-sm text-ink">Payment is access control for a grounded answer.</p>
+            </div>
+            <div className="rounded-sm border border-line bg-panelSoft/60 p-4">
+              <p className="wf-label">Output</p>
+              <p className="mt-2 text-sm text-ink">Answer, citations, provider trace, and settlement metadata.</p>
+            </div>
+            <div className="rounded-sm border border-line bg-panelSoft/60 p-4">
+              <p className="wf-label">Best Fit</p>
+              <p className="mt-2 text-sm text-ink">Agents that need premium private knowledge on demand.</p>
+            </div>
+          </div>
+        </div>
+        <div className="space-y-4 rounded-sm border border-line bg-panelSoft/50 p-5">
+          <div>
+            <p className="wf-label">Public Endpoint</p>
+            <h3 className="mt-2 text-xl font-medium text-ink">`POST /api/v1/query`</h3>
+          </div>
+          <pre className="overflow-x-auto rounded-sm border border-line bg-black px-4 py-4 text-xs leading-6 text-muted">
+            <code>{`curl -X POST http://localhost:3000/api/v1/query \\
+  -H 'content-type: application/json' \\
+  -d '{
+    "question": "What discount guardrails protect renewal margin?",
+    "sourceId": "pricing-ops",
+    "mode": "balanced",
+    "priceCeiling": 0.04
+  }'`}</code>
+          </pre>
+          <div className="rounded-sm border border-dashed border-white/10 bg-black/60 p-4 text-sm text-muted">
+            Query the service directly, then fetch the receipt at <span className="font-mono text-ink">/api/v1/query/:id/report</span>.
+          </div>
+        </div>
+      </div>
+    </Card>
   );
 }
 

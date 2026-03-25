@@ -8,7 +8,7 @@ import '@/app/globals.css';
 
 export const metadata: Metadata = {
   title: 'Tempo Query Commerce',
-  description: 'Pay-per-query knowledge base with grounded answers, receipts, and source-aware pricing.',
+  description: 'Machine-buyable knowledge with grounded answers, Tempo receipts, and no API keys or accounts required.',
 };
 
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {

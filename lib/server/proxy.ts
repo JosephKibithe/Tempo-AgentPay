@@ -19,22 +19,27 @@ import {
 } from '@/lib/agentpay';
 import type {
   ApiErrorPayload,
+  CreateKnowledgeSourcePayload,
   CreateQueryPayload,
+  IngestKnowledgeDocumentsPayload,
   KnowledgeSource,
   Policy,
   ProviderHealth,
   Query,
   QueryCreateResponse,
   QueryReport,
+  SourceMutationResponse,
   SummaryStats,
 } from '@/lib/types';
 import {
+  createKnowledgeSource,
   createQuery,
   getPolicy,
   getProviderHealth,
   getQuery,
   getQueryReport,
   getSummary,
+  ingestKnowledgeDocuments,
   listKnowledgeSources,
   updatePolicy,
 } from '@/lib/server/knowledge-base';
@@ -167,6 +172,27 @@ export async function proxySources() {
     return NextResponse.json(list satisfies KnowledgeSource[]);
   } catch (error) {
     return errorResponse('Unable to fetch source catalog', error instanceof Error ? error.message : String(error), 502, useMocks());
+  }
+}
+
+export async function proxySourceCreate(body: unknown) {
+  try {
+    const payload = typeof body === 'object' && body !== null ? (body as CreateKnowledgeSourcePayload) : ({} as CreateKnowledgeSourcePayload);
+    const data = createKnowledgeSource(payload);
+    return NextResponse.json(data satisfies SourceMutationResponse, { status: 201 });
+  } catch (error) {
+    return errorResponse('Unable to create source collection', error instanceof Error ? error.message : String(error), 400, useMocks());
+  }
+}
+
+export async function proxySourceDocumentIngest(sourceId: string, body: unknown) {
+  try {
+    const payload =
+      typeof body === 'object' && body !== null ? (body as IngestKnowledgeDocumentsPayload) : ({ documents: [] } as IngestKnowledgeDocumentsPayload);
+    const data = ingestKnowledgeDocuments(sourceId, payload);
+    return NextResponse.json(data satisfies SourceMutationResponse, { status: 201 });
+  } catch (error) {
+    return errorResponse('Unable to ingest source documents', error instanceof Error ? error.message : String(error), 400, useMocks());
   }
 }
 
